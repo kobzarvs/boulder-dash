@@ -47,7 +47,7 @@ mod flow;
 use flow::{Flow, Pad};
 
 pub const SCREEN_W: f32 = 640.0;
-pub const SCREEN_H: f32 = 384.0;
+pub const SCREEN_H: f32 = 416.0;
 const TICK: f32 = 1.0 / 60.0;
 const CAVE_COUNT: usize = 24;
 
@@ -493,7 +493,7 @@ fn window_conf() -> Conf {
     Conf {
         window_title: "Boulder Dash".to_owned(),
         window_width: 1280,
-        window_height: 768,
+        window_height: 832,
         window_resizable: true,
         // Crisp integer scaling on Retina: request the real (2x) framebuffer
         // so `screen_width()` returns physical pixels and the letterbox math
@@ -556,10 +556,11 @@ async fn main() {
 
     let mut game_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, SCREEN_W, SCREEN_H));
     game_cam.render_target = Some(rt.clone());
-    // 256x240 flow screens, aspect-preserved and zoomed to fill the 640x384
-    // frame height (visible logical area 400x240, horizontally centered).
+    // 256x240 flow screens, aspect-preserved and zoomed to fill the frame
+    // height (visible logical area computed from the frame aspect).
+    let lw = 240.0 * SCREEN_W / SCREEN_H;
     let mut screens_cam =
-        Camera2D::from_display_rect(Rect::new(-72.0, 0.0, 400.0, 240.0));
+        Camera2D::from_display_rect(Rect::new(-(lw - 256.0) / 2.0, 0.0, lw, 240.0));
     screens_cam.render_target = Some(rt.clone());
 
     let renderer = Renderer::new();

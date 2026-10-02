@@ -14,18 +14,18 @@ use crate::engine::Cave;
 
 use super::atlas::Atlas;
 
-pub const HUD_H: f32 = 32.0;
+pub const HUD_H: f32 = 48.0;
 
 /// Right edge of the HUD bar (screen is 640 px wide).
 const RIGHT: f32 = 636.0;
 
-/// Built-in-font size for UI text (~8 px glyph, matching the old tile rows).
-pub const FONT_SIZE: f32 = 12.0;
+/// Built-in-font size for UI text (~16 px glyph; double the original).
+pub const FONT_SIZE: f32 = 24.0;
 /// Rasterization size; drawn at FONT_SIZE via font_scale, so glyphs are
-/// supersampled ~4x and stay smooth under camera/window zoom.
+/// supersampled ~2x and stay smooth under camera/window zoom.
 const RASTER_SIZE: u16 = 48;
-/// Baseline offset from a tile-row top.
-const BASELINE: f32 = 10.0;
+/// Baseline offset from a text row top.
+pub const BASELINE: f32 = 17.0;
 
 fn text_params(color: Color) -> TextParams<'static> {
     TextParams {
@@ -87,17 +87,17 @@ pub fn draw_hud(
     } else {
         super::atlas::DIAMOND_PAL
     };
-    atlas.draw_quad(dquad, world_bank, dpal, 2.0, 0.0);
+    atlas.draw_quad(dquad, world_bank, dpal, 4.0, 8.0);
     let remaining = cave.diamonds_needed().saturating_sub(cave.diamonds_collected());
-    draw_num(atlas, 44.0, 4.0, remaining, 2);
+    draw_num(atlas, 84.0, 4.0, remaining, 2);
     draw_num(atlas, RIGHT, 4.0, cave.score(), 6);
 
     // Row 1: time, cave letter + level, reserve lives.
-    draw_text(atlas, 2.0, 20.0, "TIME");
-    draw_num(atlas, 64.0, 20.0, cave.time_units_remaining(), 3);
+    draw_text(atlas, 4.0, 26.0, "TIME");
+    draw_num(atlas, 140.0, 26.0, cave.time_units_remaining(), 3);
     let label = format!("CAVE {}", (b'A' + cave_idx as u8) as char);
-    draw_text(atlas, 288.0, 20.0, &label);
-    draw_num(atlas, 368.0, 20.0, level as u32, 1);
+    draw_text(atlas, 256.0, 26.0, &label);
+    draw_num(atlas, 380.0, 26.0, level as u32, 1);
     let lives = format!("LIVES{}", cave.lives());
-    draw_text(atlas, RIGHT - lives.len() as f32 * 8.0, 20.0, &lives);
+    draw_text(atlas, RIGHT - text_width(&lives), 26.0, &lives);
 }

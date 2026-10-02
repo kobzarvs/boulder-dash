@@ -37,14 +37,14 @@ pub const WORLD_NAMES: [&str; 6] = ["BOULDER", "ICE", "SAND", "OCEAN", "RELIC", 
 /// Overlay text via the built-in font (black-outlined, any background).
 fn draw_text(atlas: &Atlas, x: f32, y: f32, text: &str) {
     let _ = atlas;
-    boulder_dash::render::hud::text_outlined(x, y + 10.0, text);
+    boulder_dash::render::hud::text_outlined(x, y + boulder_dash::render::hud::BASELINE, text);
 }
 
 /// Centered 1x text line.
 fn text_c(atlas: &Atlas, y: f32, text: &str) {
     let _ = atlas;
     let x = (W - boulder_dash::render::hud::text_width(text)) / 2.0;
-    boulder_dash::render::hud::text_outlined(x, y + 10.0, text);
+    boulder_dash::render::hud::text_outlined(x, y + boulder_dash::render::hud::BASELINE, text);
 }
 
 fn blink(tick: u64) -> bool {
@@ -333,7 +333,8 @@ pub fn draw_demo_label(atlas: &Atlas, tick: u64) {
 
 /// Total score (banked + in-cave) over the HUD's per-cave score field.
 pub fn draw_total_score(atlas: &Atlas, total: u32) {
-    draw_rectangle(584.0, 0.0, 52.0, 12.0, BLACK);
     let s = format!("{:06}", total.min(999_999));
-    draw_text(atlas, 636.0 - s.len() as f32 * 8.0, 4.0, &s);
+    let w = boulder_dash::render::hud::text_width(&s);
+    draw_rectangle(636.0 - w - 4.0, 0.0, w + 8.0, 26.0, BLACK);
+    draw_text(atlas, 636.0 - w, 4.0, &s);
 }
