@@ -48,10 +48,6 @@ use flow::{Flow, Pad};
 
 pub const SCREEN_W: f32 = 512.0;
 pub const SCREEN_H: f32 = 480.0;
-/// Flow screens (title/map/password/...) are 256x240 nametables; this offset
-/// centers them in the 512x480 frame (via a shifted camera in `render_frame`).
-const SCREENS_OX: f32 = (SCREEN_W - 256.0) / 2.0;
-const SCREENS_OY: f32 = (SCREEN_H - 240.0) / 2.0;
 const TICK: f32 = 1.0 / 60.0;
 const CAVE_COUNT: usize = 24;
 
@@ -532,8 +528,8 @@ fn render_frame(
     flow: &mut Flow,
     renderer: &Renderer,
 ) {
-    // Gameplay states use the full 512x480 frame; 256x240 flow screens are
-    // drawn through a shifted camera that centers them.
+    // Gameplay states use the full 512x480 frame; flow screens draw in
+    // 256x240 logical coordinates through a x2-zoom camera.
     let cam = match flow.state_name() {
         "playing" | "demo" | "complete" => game_cam,
         _ => screens_cam,
@@ -551,14 +547,9 @@ async fn main() {
 
     let mut game_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, SCREEN_W, SCREEN_H));
     game_cam.render_target = Some(rt.clone());
-    // 256x240 logical coordinates centered in the 512x480 target, for the
-    // nametable flow screens (title/map/password/...).
-    let mut screens_cam = Camera2D::from_display_rect(Rect::new(
-        -SCREENS_OX,
-        -SCREENS_OY,
-        SCREEN_W,
-        SCREEN_H,
-    ));
+    // 256x240 logical coordinates zoomed x2 to fill the 512x480 target,
+    // for the nametable flow screens (title/map/password/...).
+    let mut screens_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, 256.0, 240.0));
     screens_cam.render_target = Some(rt.clone());
 
     let renderer = Renderer::new();
