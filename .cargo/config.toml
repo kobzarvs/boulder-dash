@@ -1,0 +1,5 @@
+# The wasm build links quad-snd's WebAudio backend, whose `audio_*` symbols
+# are provided by JS at runtime (see index.html: mq_js_bundle.js +
+# quad_snd_audio.js), so the linker must allow them to be undefined here.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-args=--allow-undefined"]
