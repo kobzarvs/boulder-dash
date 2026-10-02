@@ -29,10 +29,10 @@ pub const DIAMOND_PAL: usize = 8;
 const DIAMOND_BLUE: [u8; 4] = [0x0F, 0x11, 0x21, 0x30];
 
 /// Extra baked palette row: HUD/overlay text. The ROM font tiles are SOLID
-/// (background pixels = value 1, glyph strokes = 2/3), so the palette must
-/// map 1 -> black, 2 -> gray shadow, 3 -> white glyph.
+/// (background pixels = value 1, glyph strokes = 2/3). Map 1 -> black,
+/// 2 -> BLACK shadow (reads as an outline on bright backgrounds), 3 -> white.
 pub const FONT_PAL: usize = 9;
-const FONT_COLORS: [u8; 4] = [0x0F, 0x0F, 0x10, 0x20];
+const FONT_COLORS: [u8; 4] = [0x0F, 0x0F, 0x0F, 0x20];
 
 /// Atlas geometry: 128x160 tiles of 8x8 px (10 palette rows of 2048 tiles).
 pub const ATLAS_COLS: usize = 128;
