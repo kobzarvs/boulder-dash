@@ -1,46 +1,46 @@
 //! Tile atlas: every CHR tile pre-rendered in every palette variant.
 //!
 //! The NES selects colors per-tile via palette attributes; we instead bake
-//! `2048 tiles x 8 palettes` into one 1024x1024 texture at startup and pick
-//! the source rect per draw. Palettes 0-3 are the background groups,
-//! 4-7 the sprite groups (pixel value 0 = transparent for sprites).
-//!
-//! PROVISIONAL: the universal backdrop ($3F00) is rendered as solid black.
-//! All palette tables store 0x22 (light blue) in slot 0, but every manual/
-//! reference screenshot shows a black cave background, so black it is.
+//! `2048 tiles x 30 palettes` into one texture at startup and pick the source
+//! rect per draw. Rows 0-23 are the per-WORLD background groups (6 worlds x
+//! 4, from the ROM's $BC28 table — byte 0 of each group is that world's
+//! backdrop, drawn opaque), 24-27 the sprite groups (pixel value 0 =
+//! transparent), 28 blue diamonds, 29 the text palette.
 
 use macroquad::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::data::cave_params::{NES_PALETTE, PALETTE_MAIN};
+use crate::data::cave_params::{NES_PALETTE, PALETTE_MAIN, WORLD_PALETTES};
 use crate::data::tiles::{TILES, TILE_COUNT};
 
-/// Background palette groups (from the low 16 bytes of the palette table).
-pub const BG_PALETTES: usize = 4;
-/// Sprite palette groups (high 16 bytes); pixel 0 is transparent there.
+/// Background palette rows: 6 worlds x 4 groups from WORLD_PALETTES.
+pub const BG_PALETTES: usize = 24;
+/// Sprite palette rows (high 16 bytes of PALETTE_MAIN); pixel 0 transparent.
 pub const SPRITE_PALETTES: usize = 4;
 pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES + 2;
 
 /// Extra baked palette row: light-blue diamonds. The ROM colors diamonds
 /// with the orange wall palette (attr 0); the remake uses the classic blue.
-pub const DIAMOND_PAL: usize = 8;
+pub const DIAMOND_PAL: usize = 28;
 /// [backdrop, shade, body, sparkle] for DIAMOND_PAL.
 const DIAMOND_BLUE: [u8; 4] = [0x0F, 0x11, 0x21, 0x30];
 
 /// Extra baked palette row: HUD/overlay text. The ROM font tiles are SOLID
 /// (background pixels = value 1, glyph strokes = 2/3). Map 1 -> black,
 /// 2 -> BLACK shadow (reads as an outline on bright backgrounds), 3 -> white.
-pub const FONT_PAL: usize = 9;
+pub const FONT_PAL: usize = 29;
 const FONT_COLORS: [u8; 4] = [0x0F, 0x0F, 0x0F, 0x20];
 
-/// Atlas geometry: 128x160 tiles of 8x8 px (10 palette rows of 2048 tiles).
+/// Palette row for a world's background group: world 0-5, attr 0-3.
+pub fn world_pal(world: usize, attr: usize) -> usize {
+    world.min(5) * 4 + (attr & 3)
+}
+
+/// Atlas geometry: 128 tiles wide, PALETTE_COUNT*16 rows of 8x8 px.
 pub const ATLAS_COLS: usize = 128;
 pub const ATLAS_SIDE: u16 = (ATLAS_COLS * 8) as u16;
 pub const ATLAS_H: u16 = ((PALETTE_COUNT * TILE_COUNT) / ATLAS_COLS * 8) as u16;
-
-/// NES color id 0x0F — black, used as the universal backdrop (PROVISIONAL).
-const BACKDROP_NES: u8 = 0x0F;
 
 pub fn nes_rgb(idx: u8) -> (u8, u8, u8) {
     let [r, g, b] = NES_PALETTE[(idx & 0x3F) as usize];
@@ -50,9 +50,15 @@ pub fn nes_rgb(idx: u8) -> (u8, u8, u8) {
 /// Resolve a baked palette row to its 4 NES color ids (custom rows included).
 fn palette_table(pal: usize) -> &'static [u8; 4] {
     match pal {
+        0..=23 => WORLD_PALETTES[pal / 4][(pal % 4) * 4..(pal % 4) * 4 + 4]
+            .try_into()
+            .unwrap(),
+        24..=27 => PALETTE_MAIN[16 + (pal - 24) * 4..16 + (pal - 24) * 4 + 4]
+            .try_into()
+            .unwrap(),
         DIAMOND_PAL => &DIAMOND_BLUE,
         FONT_PAL => &FONT_COLORS,
-        _ => PALETTE_MAIN[pal * 4..pal * 4 + 4].try_into().unwrap(),
+        _ => unreachable!("bad palette row {pal}"),
     }
 }
 
@@ -85,7 +91,9 @@ impl Atlas {
                     for px_i in 0..8 {
                         let v = px[py * 8 + px_i] as usize;
                         let (r, g, b, a) = if v == 0 {
-                            let (r, g, b) = nes_rgb(BACKDROP_NES);
+                            // Backdrop: the palette's own color 0 (opaque for
+                            // background rows, transparent for sprites).
+                            let (r, g, b) = nes_rgb(table[0]);
                             (r, g, b, if sprite { 0 } else { 255 })
                         } else {
                             let (r, g, b) = nes_rgb(table[v]);

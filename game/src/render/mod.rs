@@ -103,24 +103,32 @@ impl Renderer {
         let attr = METATILE_ATTRS[obj as usize] as usize;
         let (quad, pal): ([u8; 4], usize) = match obj {
             Obj::Space | Obj::Vacated | Obj::Mud | Obj::Steel | Obj::Brick | Obj::Boulder => {
-                (self.seq_quad(obj, var), attr)
+                (self.seq_quad(obj, var), atlas::world_pal(var, attr))
             }
             Obj::Door => {
                 if door_open {
                     // Open-door quad ($F3F3 = record quad 8), flashing bright.
-                    let pal = if (frame / 8).is_multiple_of(2) { 2 } else { attr };
+                    let pal = if (frame / 8).is_multiple_of(2) {
+                        atlas::world_pal(var, 2)
+                    } else {
+                        atlas::world_pal(var, attr)
+                    };
                     (self.seq_quad(obj, 8), pal)
                 } else {
-                    (self.seq_quad(obj, var), attr)
+                    (self.seq_quad(obj, var), atlas::world_pal(var, attr))
                 }
             }
             Obj::MagicWall => {
                 if magic_active {
                     // Active magic wall quad ($F3EB = record quad 6), flashing.
-                    let pal = if (frame / 4).is_multiple_of(2) { 2 } else { attr };
+                    let pal = if (frame / 4).is_multiple_of(2) {
+                        atlas::world_pal(var, 2)
+                    } else {
+                        atlas::world_pal(var, attr)
+                    };
                     (self.seq_quad(obj, 6), pal)
                 } else {
-                    (self.seq_quad(obj, var), attr)
+                    (self.seq_quad(obj, var), atlas::world_pal(var, attr))
                 }
             }
             Obj::Diamond | Obj::PendingDiamond => {
@@ -128,19 +136,23 @@ impl Renderer {
                 let pal = if (frame / 16).is_multiple_of(2) {
                     atlas::DIAMOND_PAL
                 } else {
-                    2
+                    atlas::world_pal(var, 2)
                 };
                 (self.quad_of(Obj::Diamond), pal)
             }
             Obj::ExplosionRemnant => {
-                let pal = if (frame / 4).is_multiple_of(2) { 2 } else { attr };
+                let pal = if (frame / 4).is_multiple_of(2) {
+                    atlas::world_pal(var, 2)
+                } else {
+                    atlas::world_pal(var, attr)
+                };
                 (self.quad_of(Obj::ExplosionRemnant), pal)
             }
             Obj::Firefly | Obj::Butterfly => {
                 let f = ((frame / 8) % 6) as usize;
-                (self.seq_quad(obj, f), attr)
+                (self.seq_quad(obj, f), atlas::world_pal(var, attr))
             }
-            Obj::Amoeba | Obj::DeadAmoeba => (self.quad_of(Obj::Amoeba), attr),
+            Obj::Amoeba | Obj::DeadAmoeba => (self.quad_of(Obj::Amoeba), atlas::world_pal(var, attr)),
             Obj::Rockford => {
                 // Body = background metatile 15 (quad $F44F), BG palette 0.
                 // The original animates it via the CHR1 bank swap
@@ -149,7 +161,7 @@ impl Renderer {
                 // unrelated worlds-5/6 art, so the body never comes from
                 // the cave's `bank` when that is 6.
                 let bbank = ((frame / 8) % 4) as usize;
-                self.atlas.draw_quad(ROCKFORD_BODY_QUAD, bbank, 0, x, y);
+                self.atlas.draw_quad(ROCKFORD_BODY_QUAD, bbank, atlas::world_pal(var, 0), x, y);
                 return;
             }
         };

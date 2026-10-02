@@ -30,8 +30,8 @@ const PAL_TEXT: usize = boulder_dash::render::atlas::FONT_PAL;
 /// cursor carries the selection marker.
 const PAL_ACCENT: usize = boulder_dash::render::atlas::FONT_PAL;
 /// Password digits: 8x16 SPRITE tiles with color-0 background — must use a
-/// sprite palette row (pixel 0 transparent), per the ROM's sprite group 2.
-const PAL_SPR_DIGITS: usize = 6;
+/// sprite palette row (pixel 0 transparent); row 26 = sprite group 2 ($D158).
+const PAL_SPR_DIGITS: usize = 26;
 
 /// World names in ROM order ($E909 caption scripts).
 pub const WORLD_NAMES: [&str; 6] = ["BOULDER", "ICE", "SAND", "OCEAN", "RELIC", "VOLCANO"];
@@ -76,7 +76,14 @@ fn draw_boulder(atlas: &Atlas, variant: usize, x: f32, y: f32) {
     let row = &METATILE_SEQS[Obj::Boulder as usize];
     let quad: [u8; 4] = row[variant * 4..variant * 4 + 4].try_into().unwrap();
     draw_texture(
-        &atlas.quad_texture(quad, variant.min(3), METATILE_ATTRS[Obj::Boulder as usize] as usize),
+        &atlas.quad_texture(
+            quad,
+            variant.min(3),
+            boulder_dash::render::atlas::world_pal(
+                variant,
+                METATILE_ATTRS[Obj::Boulder as usize] as usize,
+            ),
+        ),
         x,
         y,
         WHITE,
