@@ -1,11 +1,13 @@
 //! Top HUD bar (32 px, two cell rows): diamonds quota, score, time, cave id,
-//! reserve lives. Font tiles live in CHR bank 6: digits 0-9 at 1665-1674,
-//! A-Z at 1675-1700; tile 1712 is blank.
+//! reserve lives. Text is drawn with macroquad's built-in font (the ROM font
+//! tiles are solid-background and proved unreadable at non-integer zoom).
 //!
 //! PROVISIONAL: the original HUD uses dedicated diamond/clock icon tiles
 //! (1701-1712 are box-frame pieces, no icon art found); we substitute the
 //! world's diamond metatile for the diamond icon and a "TIME" label for the
 //! clock.
+
+use macroquad::prelude::*;
 
 use crate::data::tiles::METATILE_SEQS;
 use crate::engine::Cave;
@@ -17,9 +19,12 @@ pub const HUD_H: f32 = 32.0;
 /// Right edge of the HUD bar (screen is 640 px wide).
 const RIGHT: f32 = 636.0;
 
-/// Palette group used for HUD text (solid font tiles: bg=1, strokes=2/3).
-const TEXT_PAL: usize = super::atlas::FONT_PAL;
+/// Built-in-font size for UI text (~8 px glyph, matching the old tile rows).
+pub const FONT_SIZE: f32 = 12.0;
+/// Baseline offset from a tile-row top.
+const BASELINE: f32 = 10.0;
 
+/// CHR font tile index (still used for the atlas text textures/sprites).
 pub fn font_tile(c: char) -> usize {
     match c {
         '0'..='9' => 1665 + (c as usize - '0' as usize),
@@ -28,16 +33,27 @@ pub fn font_tile(c: char) -> usize {
     }
 }
 
-pub fn draw_text(atlas: &Atlas, x: f32, y: f32, text: &str) {
-    for (i, c) in text.chars().enumerate() {
-        atlas.draw_tile(font_tile(c), TEXT_PAL, x + i as f32 * 8.0, y);
+/// Text width at FONT_SIZE with the built-in font.
+pub fn text_width(text: &str) -> f32 {
+    measure_text(text, None, FONT_SIZE as u16, 1.0).width
+}
+
+/// Draw UI text with a 1px black outline using the built-in font.
+pub fn text_outlined(x: f32, y_baseline: f32, text: &str) {
+    for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+        macroquad::prelude::draw_text(text, x + dx, y_baseline + dy, FONT_SIZE, BLACK);
     }
+    macroquad::prelude::draw_text(text, x, y_baseline, FONT_SIZE, WHITE);
+}
+
+pub fn draw_text(_atlas: &Atlas, x: f32, y: f32, text: &str) {
+    text_outlined(x, y + BASELINE, text);
 }
 
 /// Draw a right-aligned number, zero-padded to `width` digits.
 fn draw_num(atlas: &Atlas, x_right: f32, y: f32, value: u32, width: usize) {
     let s = format!("{value:0width$}");
-    let x = x_right - s.len() as f32 * 8.0;
+    let x = x_right - text_width(&s);
     draw_text(atlas, x, y, &s);
 }
 
@@ -55,7 +71,7 @@ pub fn draw_hud(
     let dquad: [u8; 4] = METATILE_SEQS[8][0..4].try_into().unwrap();
     // Flash the icon once the exit is open.
     let dpal = if door_open && (frame / 8).is_multiple_of(2) {
-        TEXT_PAL
+        super::atlas::FONT_PAL
     } else {
         super::atlas::DIAMOND_PAL
     };

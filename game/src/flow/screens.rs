@@ -23,11 +23,9 @@ use boulder_dash::render::Renderer;
 
 /// Screen is 256x240.
 const W: f32 = 256.0;
-/// White/gray text palette group (matches the HUD).
-/// Overlay text palette (solid font tiles: bg=1 black, strokes=2/3 light).
+/// Overlay text palette (kept for call sites; the built-in-font renderer
+/// draws everything in white with a black outline regardless).
 const PAL_TEXT: usize = boulder_dash::render::atlas::FONT_PAL;
-/// Accent for the selected menu item — same font palette; the diamond
-/// cursor carries the selection marker.
 const PAL_ACCENT: usize = boulder_dash::render::atlas::FONT_PAL;
 /// Password digits: 8x16 SPRITE tiles with color-0 background — must use a
 /// sprite palette row (pixel 0 transparent); row 26 = sprite group 2 ($D158).
@@ -36,18 +34,17 @@ const PAL_SPR_DIGITS: usize = 26;
 /// World names in ROM order ($E909 caption scripts).
 pub const WORLD_NAMES: [&str; 6] = ["BOULDER", "ICE", "SAND", "OCEAN", "RELIC", "VOLCANO"];
 
-fn centered_x(text: &str) -> f32 {
-    (W - text.chars().count() as f32 * 8.0) / 2.0
-}
-
-/// Overlay text with a transparent background (bright nametable screens).
+/// Overlay text via the built-in font (black-outlined, any background).
 fn draw_text(atlas: &Atlas, x: f32, y: f32, text: &str) {
-    atlas.draw_text_clear(text, PAL_TEXT, x, y);
+    let _ = atlas;
+    boulder_dash::render::hud::text_outlined(x, y + 10.0, text);
 }
 
 /// Centered 1x text line.
 fn text_c(atlas: &Atlas, y: f32, text: &str) {
-    draw_text(atlas, centered_x(text), y, text);
+    let _ = atlas;
+    let x = (W - boulder_dash::render::hud::text_width(text)) / 2.0;
+    boulder_dash::render::hud::text_outlined(x, y + 10.0, text);
 }
 
 fn blink(tick: u64) -> bool {
@@ -56,7 +53,8 @@ fn blink(tick: u64) -> bool {
 
 /// Draw text in a non-default palette group (menu selection highlight).
 fn text_pal(atlas: &Atlas, x: f32, y: f32, text: &str, pal: usize) {
-    atlas.draw_text_clear(text, pal, x, y);
+    let _ = pal;
+    draw_text(atlas, x, y, text);
 }
 
 /// Diamond quad (menu cursor / decoration), gently sparkling like in-game.
