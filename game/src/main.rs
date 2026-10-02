@@ -174,7 +174,7 @@ struct Audio {
     /// Master music on/off (M key). SFX are unaffected.
     music_enabled: bool,
     /// Last engine tick at which each SFX slot was triggered.
-    last_sfx: [Option<u64>; 36],
+    last_sfx: HashMap<usize, u64>,
 }
 
 impl Audio {
@@ -233,7 +233,7 @@ impl Audio {
             hurry: false,
             paused: false,
             music_enabled: true,
-            last_sfx: [None; 36],
+            last_sfx: HashMap::new(),
         }
     }
 
@@ -388,12 +388,12 @@ impl Audio {
     }
 
     fn play_sfx(&mut self, slot: usize, now: u64) {
-        if let Some(last) = self.last_sfx[slot] {
+        if let Some(&last) = self.last_sfx.get(&slot) {
             if now.saturating_sub(last) < sfx_cooldown(slot) {
                 return;
             }
         }
-        self.last_sfx[slot] = Some(now);
+        self.last_sfx.insert(slot, now);
         if let Some(sound) = self.sounds.get(&slot) {
             mq::play_sound(
                 sound,
@@ -495,11 +495,15 @@ fn window_conf() -> Conf {
         window_width: 1024,
         window_height: 960,
         window_resizable: true,
+        // Crisp integer scaling on Retina: request the real (2x) framebuffer
+        // so `screen_width()` returns physical pixels and the letterbox math
+        // below lands on whole pixels instead of a blurry OS upscale.
+        high_dpi: true,
         ..Default::default()
     }
 }
 
-/// Blit the 256x240 render target to the window, integer-scaled letterbox.
+/// Blit the 512x480 render target to the window, integer-scaled letterbox.
 fn blit(rt: &RenderTarget) {
     set_default_camera();
     clear_background(BLACK);
