@@ -268,12 +268,14 @@ pub fn draw_precave(
 /// Drawn over the frozen cave scene. The bonus is already in `total_score`;
 /// `shown` is the tally animation value.
 pub fn draw_clear_tally(atlas: &Atlas, shown: u32, total_score: u32, tick: u64) {
-    draw_rectangle(24.0, 76.0, 208.0, 76.0, Color::new(0.0, 0.0, 0.0, 0.78));
+    draw_rectangle(152.0, 184.0, 208.0, 76.0, Color::new(0.0, 0.0, 0.0, 0.78));
     if blink(tick) {
-        text_c(atlas, 84.0, "CAVE CLEAR");
+        draw_text(atlas, 256.0 - 5.0 * 8.0, 192.0, "CAVE CLEAR");
     }
-    text_c(atlas, 116.0, &format!("TIME BONUS {shown:03}"));
-    text_c(atlas, 132.0, &format!("SCORE {:06}", total_score.min(999_999)));
+    let bonus = format!("TIME BONUS {shown:03}");
+    draw_text(atlas, 256.0 - bonus.len() as f32 * 4.0, 224.0, &bonus);
+    let score = format!("SCORE {:06}", total_score.min(999_999));
+    draw_text(atlas, 256.0 - score.len() as f32 * 4.0, 240.0, &score);
 }
 
 /// Game over / continue (ROM state 14): the decoded screen + the password
@@ -315,13 +317,13 @@ pub fn draw_ending(r: &Renderer, score: u32, tick: u64) {
 /// "DEMO" label in the HUD bar during attract mode.
 pub fn draw_demo_label(atlas: &Atlas, tick: u64) {
     if blink(tick) {
-        draw_text(atlas, 112.0, 4.0, "DEMO");
+        draw_text(atlas, 240.0, 4.0, "DEMO");
     }
 }
 
 /// Total score (banked + in-cave) over the HUD's per-cave score field.
 pub fn draw_total_score(atlas: &Atlas, total: u32) {
-    draw_rectangle(196.0, 0.0, 56.0, 12.0, BLACK);
+    draw_rectangle(448.0, 0.0, 60.0, 12.0, BLACK);
     let s = format!("{:06}", total.min(999_999));
-    draw_text(atlas, 252.0 - s.len() as f32 * 8.0, 4.0, &s);
+    draw_text(atlas, 508.0 - s.len() as f32 * 8.0, 4.0, &s);
 }

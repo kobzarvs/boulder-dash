@@ -124,8 +124,12 @@ impl Renderer {
                 }
             }
             Obj::Diamond | Obj::PendingDiamond => {
-                // Sparkle approximation: flash to the white palette group.
-                let pal = if (frame / 16).is_multiple_of(2) { attr } else { 2 };
+                // Classic blue diamonds with a white sparkle flash.
+                let pal = if (frame / 16).is_multiple_of(2) {
+                    atlas::DIAMOND_PAL
+                } else {
+                    2
+                };
                 (self.quad_of(Obj::Diamond), pal)
             }
             Obj::ExplosionRemnant => {

@@ -3,9 +3,10 @@
 /// Cave pixel size: 40x22 cells of 16 px.
 pub const CAVE_W: f32 = 640.0;
 pub const CAVE_H: f32 = 352.0;
-/// Visible cave viewport (below the 32 px HUD bar).
-pub const VIEW_W: f32 = 256.0;
-pub const VIEW_H: f32 = 208.0;
+/// Visible cave viewport (below the 32 px HUD bar). Larger than the NES's
+/// 256x208 by user request: 32x28 cells instead of 16x13.
+pub const VIEW_W: f32 = 512.0;
+pub const VIEW_H: f32 = 448.0;
 
 pub struct Camera {
     pub x: f32,
@@ -23,10 +24,21 @@ impl Camera {
         Camera { x: 0.0, y: 0.0 }
     }
 
+    /// Clamp on one axis; center the cave when the viewport is larger than it
+    /// (viewport is taller than the 352 px cave, so `y` goes negative there —
+    /// the draw code already handles negative camera as black margins).
+    fn clamp_axis(c: f32, cave: f32, view: f32) -> f32 {
+        if view >= cave {
+            (cave - view) / 2.0
+        } else {
+            c.clamp(0.0, cave - view)
+        }
+    }
+
     fn clamped(cx: f32, cy: f32) -> (f32, f32) {
         (
-            cx.clamp(0.0, CAVE_W - VIEW_W),
-            cy.clamp(0.0, CAVE_H - VIEW_H),
+            Self::clamp_axis(cx, CAVE_W, VIEW_W),
+            Self::clamp_axis(cy, CAVE_H, VIEW_H),
         )
     }
 

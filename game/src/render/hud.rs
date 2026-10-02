@@ -7,12 +7,15 @@
 //! world's diamond metatile for the diamond icon and a "TIME" label for the
 //! clock.
 
-use crate::data::tiles::{METATILE_ATTRS, METATILE_SEQS};
+use crate::data::tiles::METATILE_SEQS;
 use crate::engine::Cave;
 
 use super::atlas::Atlas;
 
 pub const HUD_H: f32 = 32.0;
+
+/// Right edge of the HUD bar (screen is 512 px wide).
+const RIGHT: f32 = 508.0;
 
 /// Palette group used for HUD text (white/gray glyph, black shadow).
 const TEXT_PAL: usize = 2;
@@ -54,19 +57,19 @@ pub fn draw_hud(
     let dpal = if door_open && (frame / 8).is_multiple_of(2) {
         TEXT_PAL
     } else {
-        METATILE_ATTRS[8] as usize
+        super::atlas::DIAMOND_PAL
     };
     atlas.draw_quad(dquad, world_bank, dpal, 2.0, 0.0);
     let remaining = cave.diamonds_needed().saturating_sub(cave.diamonds_collected());
     draw_num(atlas, 44.0, 4.0, remaining, 2);
-    draw_num(atlas, 252.0, 4.0, cave.score(), 6);
+    draw_num(atlas, RIGHT, 4.0, cave.score(), 6);
 
     // Row 1: time, cave letter + level, reserve lives.
     draw_text(atlas, 2.0, 20.0, "TIME");
     draw_num(atlas, 64.0, 20.0, cave.time_units_remaining(), 3);
     let label = format!("CAVE {}", (b'A' + cave_idx as u8) as char);
-    draw_text(atlas, 96.0, 20.0, &label);
-    draw_num(atlas, 160.0, 20.0, level as u32, 1);
+    draw_text(atlas, 224.0, 20.0, &label);
+    draw_num(atlas, 296.0, 20.0, level as u32, 1);
     let lives = format!("LIVES{}", cave.lives());
-    draw_text(atlas, 252.0 - lives.len() as f32 * 8.0, 20.0, &lives);
+    draw_text(atlas, RIGHT - lives.len() as f32 * 8.0, 20.0, &lives);
 }

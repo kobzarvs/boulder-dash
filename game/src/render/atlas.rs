@@ -20,11 +20,18 @@ use crate::data::tiles::{TILES, TILE_COUNT};
 pub const BG_PALETTES: usize = 4;
 /// Sprite palette groups (high 16 bytes); pixel 0 is transparent there.
 pub const SPRITE_PALETTES: usize = 4;
-pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES;
+pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES + 1;
 
-/// Atlas geometry: 128x128 tiles of 8x8 px.
+/// Extra baked palette row: light-blue diamonds. The ROM colors diamonds
+/// with the orange wall palette (attr 0); the remake uses the classic blue.
+pub const DIAMOND_PAL: usize = 8;
+/// [backdrop, shade, body, sparkle] for DIAMOND_PAL.
+const DIAMOND_BLUE: [u8; 4] = [0x0F, 0x11, 0x21, 0x30];
+
+/// Atlas geometry: 128x144 tiles of 8x8 px (9 palette rows of 2048 tiles).
 pub const ATLAS_COLS: usize = 128;
 pub const ATLAS_SIDE: u16 = (ATLAS_COLS * 8) as u16;
+pub const ATLAS_H: u16 = ((PALETTE_COUNT * TILE_COUNT) / ATLAS_COLS * 8) as u16;
 
 /// NES color id 0x0F — black, used as the universal backdrop (PROVISIONAL).
 const BACKDROP_NES: u8 = 0x0F;
@@ -48,10 +55,14 @@ impl Default for Atlas {
 
 impl Atlas {
     pub fn new() -> Atlas {
-        let mut bytes = vec![0u8; ATLAS_SIDE as usize * ATLAS_SIDE as usize * 4];
+        let mut bytes = vec![0u8; ATLAS_SIDE as usize * ATLAS_H as usize * 4];
         for pal in 0..PALETTE_COUNT {
-            let table = &PALETTE_MAIN[pal * 4..pal * 4 + 4];
-            let sprite = pal >= BG_PALETTES;
+            let table: &[u8; 4] = if pal == DIAMOND_PAL {
+                &DIAMOND_BLUE
+            } else {
+                PALETTE_MAIN[pal * 4..pal * 4 + 4].try_into().unwrap()
+            };
+            let sprite = (BG_PALETTES..BG_PALETTES + SPRITE_PALETTES).contains(&pal);
             for (tile, px) in TILES.iter().enumerate() {
                 let idx = pal * TILE_COUNT + tile;
                 let ox = (idx % ATLAS_COLS) * 8;
@@ -78,7 +89,7 @@ impl Atlas {
         let img = Image {
             bytes,
             width: ATLAS_SIDE,
-            height: ATLAS_SIDE,
+            height: ATLAS_H,
         };
         let texture = Texture2D::from_image(&img);
         texture.set_filter(FilterMode::Nearest);

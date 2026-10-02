@@ -46,8 +46,12 @@ use boulder_dash::render::Renderer;
 mod flow;
 use flow::{Flow, Pad};
 
-pub const SCREEN_W: f32 = 256.0;
-pub const SCREEN_H: f32 = 240.0;
+pub const SCREEN_W: f32 = 512.0;
+pub const SCREEN_H: f32 = 480.0;
+/// Flow screens (title/map/password/...) are 256x240 nametables; this offset
+/// centers them in the 512x480 frame (via a shifted camera in `render_frame`).
+const SCREENS_OX: f32 = (SCREEN_W - 256.0) / 2.0;
+const SCREENS_OY: f32 = (SCREEN_H - 240.0) / 2.0;
 const TICK: f32 = 1.0 / 60.0;
 const CAVE_COUNT: usize = 24;
 
@@ -75,6 +79,11 @@ const SFX_SLOTS: [usize; 15] = [
     slots::SFX_CARD_RESUME, // 26: cave-card drone (music resume)
 ];
 
+/// Custom (non-ROM) sound id for the diamond-collect chime. The ROM's own
+/// collect slot (1) is a near-silent music-cut sting by design; the remake
+/// plays an audible sparkle instead.
+const CHIME_SLOT: usize = 1000;
+
 /// Map an engine sound cue to the sound-driver slot the NES ROM plays at the
 /// corresponding call site (game/assets/audio_notes.md). `None` is
 /// intentional silence: Dig's call site plays slot 0 (stop-all), MagicWall
@@ -86,7 +95,7 @@ fn cue_slot(cue: SoundCue) -> Option<usize> {
         SoundCue::Push => Some(slots::SFX_PUSH),
         SoundCue::FallStart => Some(slots::SFX_FALL_START),
         SoundCue::Thud => Some(slots::SFX_THUD),
-        SoundCue::Diamond => Some(slots::SFX_STING),
+        SoundCue::Diamond => Some(CHIME_SLOT),
         SoundCue::Explosion => Some(slots::SFX_EXPLOSION),
         SoundCue::MagicWall => None,
         SoundCue::DoorOpen => Some(slots::SFX_DOOR_OPEN),
@@ -96,11 +105,46 @@ fn cue_slot(cue: SoundCue) -> Option<usize> {
     }
 }
 
+/// Synthesize the diamond chime: three rising square-wave notes with an
+/// exponential decay (A6 -> C#7 -> F#7), 16-bit mono WAV at 44.1 kHz.
+fn chime_wav() -> Vec<u8> {
+    const SR: u32 = 44100;
+    let mut pcm: Vec<i16> = Vec::new();
+    for freq in [1760.0f32, 2217.46, 2959.96] {
+        let n = (SR as f32 * 0.05) as usize;
+        for i in 0..n {
+            let t = i as f32 / SR as f32;
+            let sq = if (t * freq) % 1.0 < 0.5 { 1.0 } else { -1.0 };
+            let env = (1.0 - i as f32 / n as f32).powf(1.5);
+            pcm.push((sq * env * 0.45 * i16::MAX as f32) as i16);
+        }
+    }
+    let data_len = (pcm.len() * 2) as u32;
+    let mut wav = Vec::with_capacity(44 + data_len as usize);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+    wav.extend_from_slice(&SR.to_le_bytes());
+    wav.extend_from_slice(&(SR * 2).to_le_bytes()); // byte rate
+    wav.extend_from_slice(&2u16.to_le_bytes()); // block align
+    wav.extend_from_slice(&16u16.to_le_bytes()); // bits
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    for s in pcm {
+        wav.extend_from_slice(&s.to_le_bytes());
+    }
+    wav
+}
+
 /// Minimum engine ticks (60 Hz) before the same SFX slot may retrigger, so
 /// a burst of identical cues over consecutive ticks does not restart the
 /// sample every frame.
 fn sfx_cooldown(slot: usize) -> u64 {
     match slot {
+        CHIME_SLOT => 3,
         slots::SFX_STING => 3,
         slots::SFX_THUD => 4,
         slots::SFX_FALL_START => 5,
@@ -131,6 +175,8 @@ struct Audio {
     world: usize,
     hurry: bool,
     paused: bool,
+    /// Master music on/off (M key). SFX are unaffected.
+    music_enabled: bool,
     /// Last engine tick at which each SFX slot was triggered.
     last_sfx: [Option<u64>; 36],
 }
@@ -190,6 +236,7 @@ impl Audio {
             world: 0,
             hurry: false,
             paused: false,
+            music_enabled: true,
             last_sfx: [None; 36],
         }
     }
@@ -217,6 +264,9 @@ impl Audio {
     }
 
     fn start_music(&mut self, slot: usize) {
+        if !self.music_enabled {
+            return;
+        }
         if let Some(sound) = self.sounds.get(&slot) {
             mq::play_sound(
                 sound,
@@ -227,6 +277,27 @@ impl Audio {
             );
             self.now_playing = Some(slot);
         }
+    }
+
+    /// Master music switch (M key): stops the loop when off, resumes the
+    /// wanted track when back on. `want_music` is preserved either way.
+    fn toggle_music(&mut self) {
+        self.music_enabled = !self.music_enabled;
+        if self.music_enabled {
+            if let Some(slot) = self.want_music {
+                self.now_playing = None;
+                self.start_music(slot);
+            }
+        } else if let Some(cur) = self.now_playing.take() {
+            if let Some(sound) = self.sounds.get(&cur) {
+                mq::stop_sound(sound);
+            }
+        }
+    }
+
+    /// Register a custom (non-ROM-slot) sound under a synthetic slot id.
+    fn add_sound(&mut self, slot: usize, sound: Sound) {
+        self.sounds.insert(slot, sound);
     }
 
     /// Request `slot` as the looping background music (`None` = silence).
@@ -425,8 +496,8 @@ fn scripted_input(script: &[(Input, u32)], t: u32) -> Input {
 fn window_conf() -> Conf {
     Conf {
         window_title: "Boulder Dash".to_owned(),
-        window_width: 768,
-        window_height: 720,
+        window_width: 1024,
+        window_height: 960,
         window_resizable: true,
         ..Default::default()
     }
@@ -454,8 +525,20 @@ fn blit(rt: &RenderTarget) {
 }
 
 /// Draw the current flow state into the render target, then to the window.
-fn render_frame(rt: &RenderTarget, game_cam: &Camera2D, flow: &mut Flow, renderer: &Renderer) {
-    set_camera(game_cam);
+fn render_frame(
+    rt: &RenderTarget,
+    game_cam: &Camera2D,
+    screens_cam: &Camera2D,
+    flow: &mut Flow,
+    renderer: &Renderer,
+) {
+    // Gameplay states use the full 512x480 frame; 256x240 flow screens are
+    // drawn through a shifted camera that centers them.
+    let cam = match flow.state_name() {
+        "playing" | "demo" | "complete" => game_cam,
+        _ => screens_cam,
+    };
+    set_camera(cam);
     clear_background(BLACK);
     flow.render(renderer);
     blit(rt);
@@ -468,6 +551,15 @@ async fn main() {
 
     let mut game_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, SCREEN_W, SCREEN_H));
     game_cam.render_target = Some(rt.clone());
+    // 256x240 logical coordinates centered in the 512x480 target, for the
+    // nametable flow screens (title/map/password/...).
+    let mut screens_cam = Camera2D::from_display_rect(Rect::new(
+        -SCREENS_OX,
+        -SCREENS_OY,
+        SCREEN_W,
+        SCREEN_H,
+    ));
+    screens_cam.render_target = Some(rt.clone());
 
     let renderer = Renderer::new();
 
@@ -482,7 +574,7 @@ async fn main() {
         for _ in 0..frames.max(1) {
             flow.update(Pad::default(), &mut audio);
         }
-        render_frame(&rt, &game_cam, &mut flow, &renderer);
+        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer);
         get_screen_data().export_png(&out);
         rt.texture.get_texture_data().export_png(&(out.clone() + ".rt.png"));
         eprintln!("BDSHOT_FLOW: screen {name} ({}), {frames} frames -> {out}", flow.state_name());
@@ -511,11 +603,11 @@ async fn main() {
                 }
             }
             flow.update(input_to_pad(input), &mut audio);
-            render_frame(&rt, &game_cam, &mut flow, &renderer);
+            render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer);
             next_frame().await;
         }
         // Render once more and capture the backbuffer before presenting.
-        render_frame(&rt, &game_cam, &mut flow, &renderer);
+        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer);
         get_screen_data().export_png(&out);
         // Also dump the raw 256x240 render target for pixel-precise checks.
         rt.texture.get_texture_data().export_png(&(out.clone() + ".rt.png"));
@@ -530,11 +622,23 @@ async fn main() {
     }
 
     let mut audio = Some(Audio::start());
+    if let Some(a) = &mut audio {
+        if let Ok(s) = mq::load_sound_from_bytes(&chime_wav()).await {
+            a.add_sound(CHIME_SLOT, s);
+        }
+    }
     let mut flow = Flow::new();
     let mut acc = 0.0f32;
 
     loop {
         let pad = read_pad();
+
+        // M = music on/off (SFX keep playing).
+        if is_key_pressed(KeyCode::M) {
+            if let Some(a) = &mut audio {
+                a.toggle_music();
+            }
+        }
 
         // Debug shortcuts during gameplay: R = restart cave,
         // [ / ] = prev/next cave, 1-4 = difficulty level.
@@ -575,7 +679,7 @@ async fn main() {
             stepped += 1;
         }
 
-        render_frame(&rt, &game_cam, &mut flow, &renderer);
+        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer);
         next_frame().await;
     }
 }
