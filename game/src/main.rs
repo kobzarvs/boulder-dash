@@ -503,30 +503,25 @@ fn window_conf() -> Conf {
     }
 }
 
-/// Blit the 512x480 render target to the window: aspect-preserving fit via a
-/// physical-pixel viewport. Fully DPI-independent — the size comes from
-/// miniquad's real drawable, so Retina can't confuse the math.
+/// Blit the 512x480 render target to the window, aspect-preserving fit.
+/// Size comes from miniquad's real drawable (physical px / dpi = logical,
+/// matching the default projection) — immune to macroquad's stale
+/// `screen_width()` on Retina startup.
 fn blit(rt: &RenderTarget) {
     set_default_camera();
     clear_background(BLACK);
+    let dpi = macroquad::miniquad::window::dpi_scale();
     let (pw, ph) = macroquad::miniquad::window::screen_size();
-    let scale = (pw / SCREEN_W).min(ph / SCREEN_H).max(0.1);
+    let (sw, sh) = (pw / dpi, ph / dpi);
+    let scale = (sw / SCREEN_W).min(sh / SCREEN_H).max(0.1);
     let (dw, dh) = (SCREEN_W * scale, SCREEN_H * scale);
-    let mut cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, SCREEN_W, SCREEN_H));
-    cam.viewport = Some((
-        ((pw - dw) / 2.0) as i32,
-        ((ph - dh) / 2.0) as i32,
-        dw as i32,
-        dh as i32,
-    ));
-    set_camera(&cam);
     draw_texture_ex(
         &rt.texture,
-        0.0,
-        0.0,
+        (sw - dw) / 2.0,
+        (sh - dh) / 2.0,
         WHITE,
         DrawTextureParams {
-            dest_size: Some(vec2(SCREEN_W, SCREEN_H)),
+            dest_size: Some(vec2(dw, dh)),
             // Render-target textures are stored bottom-up; flip on blit.
             flip_y: true,
             ..Default::default()
