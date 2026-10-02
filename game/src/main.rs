@@ -503,20 +503,30 @@ fn window_conf() -> Conf {
     }
 }
 
-/// Blit the 512x480 render target to the window, integer-scaled letterbox.
+/// Blit the 512x480 render target to the window: aspect-preserving fit via a
+/// physical-pixel viewport. Fully DPI-independent — the size comes from
+/// miniquad's real drawable, so Retina can't confuse the math.
 fn blit(rt: &RenderTarget) {
     set_default_camera();
     clear_background(BLACK);
-    let (sw, sh) = (screen_width(), screen_height());
-    let scale = (sw / SCREEN_W).min(sh / SCREEN_H).floor().max(1.0);
+    let (pw, ph) = macroquad::miniquad::window::screen_size();
+    let scale = (pw / SCREEN_W).min(ph / SCREEN_H).max(0.1);
     let (dw, dh) = (SCREEN_W * scale, SCREEN_H * scale);
+    let mut cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, SCREEN_W, SCREEN_H));
+    cam.viewport = Some((
+        ((pw - dw) / 2.0) as i32,
+        ((ph - dh) / 2.0) as i32,
+        dw as i32,
+        dh as i32,
+    ));
+    set_camera(&cam);
     draw_texture_ex(
         &rt.texture,
-        (sw - dw) / 2.0,
-        (sh - dh) / 2.0,
+        0.0,
+        0.0,
         WHITE,
         DrawTextureParams {
-            dest_size: Some(vec2(dw, dh)),
+            dest_size: Some(vec2(SCREEN_W, SCREEN_H)),
             // Render-target textures are stored bottom-up; flip on blit.
             flip_y: true,
             ..Default::default()
@@ -622,6 +632,7 @@ async fn main() {
             a.add_sound(CHIME_SLOT, s);
         }
     }
+    let mut fullscreen = false;
     let mut flow = Flow::new();
     let mut acc = 0.0f32;
 
@@ -633,6 +644,12 @@ async fn main() {
             if let Some(a) = &mut audio {
                 a.toggle_music();
             }
+        }
+
+        // F = fullscreen toggle.
+        if is_key_pressed(KeyCode::F) {
+            fullscreen = !fullscreen;
+            set_fullscreen(fullscreen);
         }
 
         // Debug shortcuts during gameplay: R = restart cave,
