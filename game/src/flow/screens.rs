@@ -29,8 +29,9 @@ const PAL_TEXT: usize = boulder_dash::render::atlas::FONT_PAL;
 /// Accent for the selected menu item — same font palette; the diamond
 /// cursor carries the selection marker.
 const PAL_ACCENT: usize = boulder_dash::render::atlas::FONT_PAL;
-/// Password digits use the same font palette.
-const PAL_SPR_DIGITS: usize = boulder_dash::render::atlas::FONT_PAL;
+/// Password digits: 8x16 SPRITE tiles with color-0 background — must use a
+/// sprite palette row (pixel 0 transparent), per the ROM's sprite group 2.
+const PAL_SPR_DIGITS: usize = 6;
 
 /// World names in ROM order ($E909 caption scripts).
 pub const WORLD_NAMES: [&str; 6] = ["BOULDER", "ICE", "SAND", "OCEAN", "RELIC", "VOLCANO"];
