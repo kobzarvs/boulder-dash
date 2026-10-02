@@ -21,8 +21,20 @@ const RIGHT: f32 = 636.0;
 
 /// Built-in-font size for UI text (~8 px glyph, matching the old tile rows).
 pub const FONT_SIZE: f32 = 12.0;
+/// Rasterization size; drawn at FONT_SIZE via font_scale, so glyphs are
+/// supersampled ~4x and stay smooth under camera/window zoom.
+const RASTER_SIZE: u16 = 48;
 /// Baseline offset from a tile-row top.
 const BASELINE: f32 = 10.0;
+
+fn text_params(color: Color) -> TextParams<'static> {
+    TextParams {
+        font_size: RASTER_SIZE,
+        font_scale: FONT_SIZE / RASTER_SIZE as f32,
+        color,
+        ..Default::default()
+    }
+}
 
 /// CHR font tile index (still used for the atlas text textures/sprites).
 pub fn font_tile(c: char) -> usize {
@@ -35,15 +47,15 @@ pub fn font_tile(c: char) -> usize {
 
 /// Text width at FONT_SIZE with the built-in font.
 pub fn text_width(text: &str) -> f32 {
-    measure_text(text, None, FONT_SIZE as u16, 1.0).width
+    measure_text(text, None, RASTER_SIZE, FONT_SIZE / RASTER_SIZE as f32).width
 }
 
 /// Draw UI text with a 1px black outline using the built-in font.
 pub fn text_outlined(x: f32, y_baseline: f32, text: &str) {
     for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
-        macroquad::prelude::draw_text(text, x + dx, y_baseline + dy, FONT_SIZE, BLACK);
+        macroquad::prelude::draw_text_ex(text, x + dx, y_baseline + dy, text_params(BLACK));
     }
-    macroquad::prelude::draw_text(text, x, y_baseline, FONT_SIZE, WHITE);
+    macroquad::prelude::draw_text_ex(text, x, y_baseline, text_params(WHITE));
 }
 
 pub fn draw_text(_atlas: &Atlas, x: f32, y: f32, text: &str) {
