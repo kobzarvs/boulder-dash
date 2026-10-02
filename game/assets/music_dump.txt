@@ -1,0 +1,76 @@
+Boulder Dash NES - sound/music dump
+period table @ $805C: 96 entries, first $06AE, last $0007
+pointer table @ $8949: 36 slots
+sound region $89D7-$9FDF; aux table $8991-$89D6 (14 x 5 bytes)
+
+slot  0  ptr=$FF60  PADDING (no data)
+slot  1  ptr=$89D7  size=  11  mask=$0F  aux=$8991  pulse1=$8A54 pulse2=$8A54 triangle=$8A54 noise=$8A54
+  bytes[0..11]: 0F 91 89 54 8A 54 8A 54 8A 54 8A
+slot  2  ptr=$89E2  size=  11  mask=$8F  aux=$8991  pulse1=$8A56 pulse2=$8A56 triangle=$8A56 noise=$8A56
+  bytes[0..11]: 8F 91 89 56 8A 56 8A 56 8A 56 8A
+slot  3  ptr=$89ED  size=   5  mask=$88  aux=$8996  pulse1=- pulse2=- triangle=- noise=$8A57
+  bytes[0..5]: 88 96 89 57 8A
+slot  4  ptr=$89F2  size=   7  mask=$83  aux=$899B  pulse1=$8A66 pulse2=$8A83 triangle=- noise=-
+  bytes[0..7]: 83 9B 89 66 8A 83 8A
+slot  5  ptr=$89F9  size=   5  mask=$81  aux=$89A0  pulse1=$8AB4 pulse2=- triangle=- noise=-
+  bytes[0..5]: 81 A0 89 B4 8A
+slot  6  ptr=$89FE  size=   5  mask=$88  aux=$89A5  pulse1=- pulse2=- triangle=- noise=$8AD0
+  bytes[0..5]: 88 A5 89 D0 8A
+slot  7  ptr=$8A03  size=   7  mask=$83  aux=$89AA  pulse1=$8AE9 pulse2=$8AFF triangle=- noise=-
+  bytes[0..7]: 83 AA 89 E9 8A FF 8A
+slot  8  ptr=$8A0A  size=   5  mask=$88  aux=$89AF  pulse1=- pulse2=- triangle=- noise=$8B30
+  bytes[0..5]: 88 AF 89 30 8B
+slot  9  ptr=$8A0F  size=   5  mask=$81  aux=$89B4  pulse1=$8B46 pulse2=- triangle=- noise=-
+  bytes[0..5]: 81 B4 89 46 8B
+slot 10  ptr=$8A14  size=   5  mask=$81  aux=$89B9  pulse1=$8B51 pulse2=- triangle=- noise=-
+  bytes[0..5]: 81 B9 89 51 8B
+slot 11  ptr=$8A19  size=   5  mask=$82  aux=$89BE  pulse1=- pulse2=$8B61 triangle=- noise=-
+  bytes[0..5]: 82 BE 89 61 8B
+slot 12  ptr=$8A1E  size=   5  mask=$88  aux=$89C3  pulse1=- pulse2=- triangle=- noise=$8B92
+  bytes[0..5]: 88 C3 89 92 8B
+slot 13  ptr=$8A23  size=   7  mask=$89  aux=$8991  pulse1=$8BD5 pulse2=- triangle=- noise=$8BE6
+  bytes[0..7]: 89 91 89 D5 8B E6 8B
+slot 14  ptr=$8A2A  size=   5  mask=$88  aux=$89C8  pulse1=- pulse2=- triangle=- noise=$8BFD
+  bytes[0..5]: 88 C8 89 FD 8B
+slot 15  ptr=$8A2F  size=   5  mask=$82  aux=$89CD  pulse1=- pulse2=$8C22 triangle=- noise=-
+  bytes[0..5]: 82 CD 89 22 8C
+slot 16  ptr=$8A34  size=   5  mask=$88  aux=$89D2  pulse1=- pulse2=- triangle=- noise=$8C3B
+  bytes[0..5]: 88 D2 89 3B 8C
+slot 17  ptr=$8A39  size=   5  mask=$88  aux=$89C8  pulse1=- pulse2=- triangle=- noise=$8CA3
+  bytes[0..5]: 88 C8 89 A3 8C
+slot 18  ptr=$8D14  size= 435  mask=$0F  aux=$8991  pulse1=$8D1F pulse2=$8D56 triangle=$8D6D noise=$8DEE
+  bytes[0..32]: 0F 91 89 1F 8D 56 8D 6D 8D EE 8D BB 38 C7 94 0F 9A 01 BC 0F 01 8D 80 06 90 04 80 9A 03 8A 9A 01
+slot 19  ptr=$8EC7  size= 617  mask=$0F  aux=$8991  pulse1=$8ED2 pulse2=$8F5E triangle=$8FD9 noise=$9072
+  bytes[0..32]: 0F 91 89 D2 8E 5E 8F D9 8F 72 90 BB FF FF 94 0F 9A 01 BE 03 91 06 9A 01 80 80 BE 03 91 06 9A 05
+slot 20  ptr=$9130  size=  11  mask=$0F  aux=$8991  pulse1=$9146 pulse2=$9162 triangle=$9189 noise=$9213
+  bytes[0..11]: 0F 91 89 46 91 62 91 89 91 13 92
+slot 21  ptr=$913B  size= 458  mask=$0F  aux=$8991  pulse1=$914C pulse2=$9162 triangle=$9189 noise=$9213
+  bytes[0..32]: 0F 91 89 4C 91 62 91 89 91 13 92 BB 70 AD A1 52 91 BB E0 C4 A1 52 91 9A 01 94 0D 06 8D 94 07 80
+slot 22  ptr=$9305  size=  11  mask=$0F  aux=$8991  pulse1=$931B pulse2=$936C triangle=$93E9 noise=$9386
+  bytes[0..11]: 0F 91 89 1B 93 6C 93 E9 93 86 93
+slot 23  ptr=$9310  size= 377  mask=$0F  aux=$8991  pulse1=$9321 pulse2=$936C triangle=$93E9 noise=$9386
+  bytes[0..32]: 0F 91 89 21 93 6C 93 E9 93 86 93 BB EF D8 A1 27 93 BB FF FF A1 27 93 9A 02 94 0F BE 72 94 BE 79
+slot 24  ptr=$9E87  size= 345  mask=$0C  aux=$8991  pulse1=- pulse2=- triangle=$9E8E noise=$9EA1
+  bytes[0..32]: 0C 91 89 8E 9E A1 9E BB 37 FF 94 0A 9A 5A 96 01 93 11 BE BA 9E 82 BE C4 9E A2 94 0A 9A 5A C1 01
+slot 25  ptr=$8A3E  size=  11  mask=$8F  aux=$8991  pulse1=$8D04 pulse2=$8D05 triangle=$8D06 noise=$8D0D
+  bytes[0..11]: 8F 91 89 04 8D 05 8D 06 8D 0D 8D
+slot 26  ptr=$8A49  size= 715  mask=$8F  aux=$8991  pulse1=$8D04 pulse2=$8D05 triangle=$8D06 noise=$8D0D
+  bytes[0..32]: 8F 91 89 04 8D 05 8D 06 8D 0D 8D A2 00 B6 A9 02 A8 F7 00 A7 0F A3 0F 02 B2 B1 04 A4 B6 A8 0E 00
+slot 27  ptr=$9489  size=  11  mask=$0F  aux=$8991  pulse1=$949F pulse2=$94BF triangle=$951B noise=$9531
+  bytes[0..11]: 0F 91 89 9F 94 BF 94 1B 95 31 95
+slot 28  ptr=$9494  size= 566  mask=$0F  aux=$8991  pulse1=$94A5 pulse2=$94BF triangle=$951B noise=$9531
+  bytes[0..32]: 0F 91 89 A5 94 BF 94 1B 95 31 95 BB 10 A4 A1 AB 94 BB 80 BB A1 AB 94 94 0F 9A 01 03 8D 94 03 80
+slot 29  ptr=$96CA  size=  11  mask=$0F  aux=$8991  pulse1=$96E0 pulse2=$9707 triangle=$9720 noise=$978E
+  bytes[0..11]: 0F 91 89 E0 96 07 97 20 97 8E 97
+slot 30  ptr=$96D5  size= 241  mask=$0F  aux=$8991  pulse1=$96E6 pulse2=$9707 triangle=$9720 noise=$978E
+  bytes[0..32]: 0F 91 89 E6 96 07 97 20 97 8E 97 BB 80 A3 A1 EC 96 BB 60 D2 A1 EC 96 06 BC 03 9A 02 94 0F 80 9A
+slot 31  ptr=$98A9  size=  11  mask=$0F  aux=$8991  pulse1=$98BF pulse2=$9938 triangle=$99B1 noise=$9A3F
+  bytes[0..11]: 0F 91 89 BF 98 38 99 B1 99 3F 9A
+slot 32  ptr=$98B4  size= 626  mask=$0F  aux=$8991  pulse1=$98C5 pulse2=$9938 triangle=$99B1 noise=$9A3F
+  bytes[0..32]: 0F 91 89 C5 98 38 99 B1 99 3F 9A BB 78 E6 A1 CB 98 BB FF FF A1 CB 98 94 0F 9A 05 12 89 06 89 9A
+slot 33  ptr=$97C6  size=  11  mask=$0F  aux=$8991  pulse1=$97DC pulse2=$980B triangle=$9816 noise=$985D
+  bytes[0..11]: 0F 91 89 DC 97 0B 98 16 98 5D 98
+slot 34  ptr=$97D1  size= 216  mask=$0F  aux=$8991  pulse1=$97E2 pulse2=$980B triangle=$9816 noise=$985D
+  bytes[0..32]: 0F 91 89 E2 97 0B 98 16 98 5D 98 BB D6 99 A1 E8 97 BB 80 BB A1 E8 97 94 0B 9A 02 BC 0E 06 8A 03
+slot 35  ptr=$9B26  size= 865  mask=$0F  aux=$8991  pulse1=$9B31 pulse2=$9B57 triangle=$9BF7 noise=$9D27
+  bytes[0..32]: 0F 91 89 31 9B 57 9B F7 9B 27 9D BB F8 D9 94 0F BC 03 9A 01 BE 67 9E 8D 90 8D 0C 9A 03 8A BD 9A
