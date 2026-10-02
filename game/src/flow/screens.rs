@@ -18,7 +18,6 @@ use boulder_dash::data::sprites::{HeadFrame, ROCKFORD_BODY_QUAD, ROCKFORD_HEAD_I
 use boulder_dash::data::tiles::{METATILE_ATTRS, METATILE_SEQS};
 use boulder_dash::engine::Obj;
 use boulder_dash::render::atlas::{nes_rgb, Atlas};
-use boulder_dash::render::hud::draw_text;
 use boulder_dash::render::nametable::blit;
 use boulder_dash::render::Renderer;
 
@@ -40,6 +39,11 @@ fn centered_x(text: &str) -> f32 {
     (W - text.chars().count() as f32 * 8.0) / 2.0
 }
 
+/// Overlay text with a transparent background (bright nametable screens).
+fn draw_text(atlas: &Atlas, x: f32, y: f32, text: &str) {
+    atlas.draw_text_clear(text, PAL_TEXT, x, y);
+}
+
 /// Centered 1x text line.
 fn text_c(atlas: &Atlas, y: f32, text: &str) {
     draw_text(atlas, centered_x(text), y, text);
@@ -51,9 +55,7 @@ fn blink(tick: u64) -> bool {
 
 /// Draw text in a non-default palette group (menu selection highlight).
 fn text_pal(atlas: &Atlas, x: f32, y: f32, text: &str, pal: usize) {
-    for (i, c) in text.chars().enumerate() {
-        atlas.draw_tile(boulder_dash::render::hud::font_tile(c), pal, x + i as f32 * 8.0, y);
-    }
+    atlas.draw_text_clear(text, pal, x, y);
 }
 
 /// Diamond quad (menu cursor / decoration), gently sparkling like in-game.

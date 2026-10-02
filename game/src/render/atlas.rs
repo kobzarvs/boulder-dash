@@ -60,6 +60,9 @@ pub struct Atlas {
     pub texture: Texture2D,
     /// Transparent metatile-quad textures (map/menu markers), built on demand.
     quad_tex: RefCell<HashMap<u64, Texture2D>>,
+    /// Transparent text textures (font background value 1 skipped), cached
+    /// per (text, palette).
+    text_tex: RefCell<HashMap<(String, u8), Texture2D>>,
 }
 
 impl Default for Atlas {
@@ -104,7 +107,11 @@ impl Atlas {
         };
         let texture = Texture2D::from_image(&img);
         texture.set_filter(FilterMode::Nearest);
-        Atlas { texture, quad_tex: RefCell::new(HashMap::new()) }
+        Atlas {
+            texture,
+            quad_tex: RefCell::new(HashMap::new()),
+            text_tex: RefCell::new(HashMap::new()),
+        }
     }
 
     /// A 2x2-tile metatile quad as a 16x16 texture with color 0 TRANSPARENT
@@ -140,6 +147,44 @@ impl Atlas {
             tex
         })
         .clone()
+    }
+
+    /// Text as a transparent texture: the ROM font tiles are solid (background
+    /// pixels = value 1), so for overlays on bright screens value 1 is skipped
+    /// and only the glyph strokes (2/3) are drawn, in palette `pal`.
+    pub fn text_texture(&self, text: &str, pal: usize) -> Texture2D {
+        let key = (text.to_owned(), pal as u8);
+        self.text_tex.borrow_mut().entry(key).or_insert_with(|| {
+            let table = palette_table(pal);
+            let w = (text.chars().count().max(1) * 8) as u16;
+            let mut img = Image::gen_image_color(w, 8, Color::new(0.0, 0.0, 0.0, 0.0));
+            for (i, c) in text.chars().enumerate() {
+                let px = &TILES[super::hud::font_tile(c)];
+                for y in 0..8 {
+                    for x in 0..8 {
+                        let v = px[y * 8 + x] as usize;
+                        if v <= 1 {
+                            continue; // 0/1 = background
+                        }
+                        let [r, g, b] = NES_PALETTE[(table[v] & 0x3F) as usize];
+                        img.set_pixel(
+                            (i * 8 + x) as u32,
+                            y as u32,
+                            Color::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0),
+                        );
+                    }
+                }
+            }
+            let tex = Texture2D::from_image(&img);
+            tex.set_filter(FilterMode::Nearest);
+            tex
+        })
+        .clone()
+    }
+
+    /// Draw text with a transparent background (overlay on bright screens).
+    pub fn draw_text_clear(&self, text: &str, pal: usize, x: f32, y: f32) {
+        draw_texture(&self.text_texture(text, pal), x, y, WHITE);
     }
 
     /// Draw one 8x8 tile (global CHR index) tinted by palette `pal` at px (x, y).
