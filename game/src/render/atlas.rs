@@ -20,7 +20,7 @@ use crate::data::tiles::{TILES, TILE_COUNT};
 pub const BG_PALETTES: usize = 4;
 /// Sprite palette groups (high 16 bytes); pixel 0 is transparent there.
 pub const SPRITE_PALETTES: usize = 4;
-pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES + 1;
+pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES + 2;
 
 /// Extra baked palette row: light-blue diamonds. The ROM colors diamonds
 /// with the orange wall palette (attr 0); the remake uses the classic blue.
@@ -28,7 +28,13 @@ pub const DIAMOND_PAL: usize = 8;
 /// [backdrop, shade, body, sparkle] for DIAMOND_PAL.
 const DIAMOND_BLUE: [u8; 4] = [0x0F, 0x11, 0x21, 0x30];
 
-/// Atlas geometry: 128x144 tiles of 8x8 px (9 palette rows of 2048 tiles).
+/// Extra baked palette row: HUD/overlay text. The ROM font tiles are SOLID
+/// (background pixels = value 1, glyph strokes = 2/3), so the palette must
+/// map 1 -> black, 2 -> gray shadow, 3 -> white glyph.
+pub const FONT_PAL: usize = 9;
+const FONT_COLORS: [u8; 4] = [0x0F, 0x0F, 0x10, 0x20];
+
+/// Atlas geometry: 128x160 tiles of 8x8 px (10 palette rows of 2048 tiles).
 pub const ATLAS_COLS: usize = 128;
 pub const ATLAS_SIDE: u16 = (ATLAS_COLS * 8) as u16;
 pub const ATLAS_H: u16 = ((PALETTE_COUNT * TILE_COUNT) / ATLAS_COLS * 8) as u16;
@@ -39,6 +45,15 @@ const BACKDROP_NES: u8 = 0x0F;
 pub fn nes_rgb(idx: u8) -> (u8, u8, u8) {
     let [r, g, b] = NES_PALETTE[(idx & 0x3F) as usize];
     (r, g, b)
+}
+
+/// Resolve a baked palette row to its 4 NES color ids (custom rows included).
+fn palette_table(pal: usize) -> &'static [u8; 4] {
+    match pal {
+        DIAMOND_PAL => &DIAMOND_BLUE,
+        FONT_PAL => &FONT_COLORS,
+        _ => PALETTE_MAIN[pal * 4..pal * 4 + 4].try_into().unwrap(),
+    }
 }
 
 pub struct Atlas {
@@ -57,11 +72,7 @@ impl Atlas {
     pub fn new() -> Atlas {
         let mut bytes = vec![0u8; ATLAS_SIDE as usize * ATLAS_H as usize * 4];
         for pal in 0..PALETTE_COUNT {
-            let table: &[u8; 4] = if pal == DIAMOND_PAL {
-                &DIAMOND_BLUE
-            } else {
-                PALETTE_MAIN[pal * 4..pal * 4 + 4].try_into().unwrap()
-            };
+            let table: &[u8; 4] = palette_table(pal);
             let sprite = (BG_PALETTES..BG_PALETTES + SPRITE_PALETTES).contains(&pal);
             for (tile, px) in TILES.iter().enumerate() {
                 let idx = pal * TILE_COUNT + tile;
@@ -105,7 +116,7 @@ impl Atlas {
             quad[0], quad[1], quad[2], quad[3], bank as u8, pal as u8, 0, 0,
         ]);
         self.quad_tex.borrow_mut().entry(key).or_insert_with(|| {
-            let table = &PALETTE_MAIN[pal * 4..pal * 4 + 4];
+            let table = palette_table(pal);
             let mut img = Image::gen_image_color(16, 16, Color::new(0.0, 0.0, 0.0, 0.0));
             for (pos, &t) in quad.iter().enumerate() {
                 let px = &TILES[bank * 256 + t as usize];

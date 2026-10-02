@@ -46,8 +46,8 @@ use boulder_dash::render::Renderer;
 mod flow;
 use flow::{Flow, Pad};
 
-pub const SCREEN_W: f32 = 512.0;
-pub const SCREEN_H: f32 = 480.0;
+pub const SCREEN_W: f32 = 640.0;
+pub const SCREEN_H: f32 = 384.0;
 const TICK: f32 = 1.0 / 60.0;
 const CAVE_COUNT: usize = 24;
 
@@ -492,8 +492,8 @@ fn scripted_input(script: &[(Input, u32)], t: u32) -> Input {
 fn window_conf() -> Conf {
     Conf {
         window_title: "Boulder Dash".to_owned(),
-        window_width: 1024,
-        window_height: 960,
+        window_width: 1280,
+        window_height: 768,
         window_resizable: true,
         // Crisp integer scaling on Retina: request the real (2x) framebuffer
         // so `screen_width()` returns physical pixels and the letterbox math
@@ -556,9 +556,10 @@ async fn main() {
 
     let mut game_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, SCREEN_W, SCREEN_H));
     game_cam.render_target = Some(rt.clone());
-    // 256x240 logical coordinates zoomed x2 to fill the 512x480 target,
-    // for the nametable flow screens (title/map/password/...).
-    let mut screens_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, 256.0, 240.0));
+    // 256x240 flow screens, aspect-preserved and zoomed to fill the 640x384
+    // frame height (visible logical area 400x240, horizontally centered).
+    let mut screens_cam =
+        Camera2D::from_display_rect(Rect::new(-72.0, 0.0, 400.0, 240.0));
     screens_cam.render_target = Some(rt.clone());
 
     let renderer = Renderer::new();

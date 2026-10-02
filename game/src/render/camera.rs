@@ -3,10 +3,10 @@
 /// Cave pixel size: 40x22 cells of 16 px.
 pub const CAVE_W: f32 = 640.0;
 pub const CAVE_H: f32 = 352.0;
-/// Visible cave viewport (below the 32 px HUD bar). Larger than the NES's
-/// 256x208 by user request: 32x28 cells instead of 16x13.
-pub const VIEW_W: f32 = 512.0;
-pub const VIEW_H: f32 = 448.0;
+/// Visible cave viewport (below the 32 px HUD bar). The whole 640x352 cave
+/// fits at once — no scrolling needed.
+pub const VIEW_W: f32 = 640.0;
+pub const VIEW_H: f32 = 352.0;
 
 pub struct Camera {
     pub x: f32,

@@ -14,11 +14,11 @@ use super::atlas::Atlas;
 
 pub const HUD_H: f32 = 32.0;
 
-/// Right edge of the HUD bar (screen is 512 px wide).
-const RIGHT: f32 = 508.0;
+/// Right edge of the HUD bar (screen is 640 px wide).
+const RIGHT: f32 = 636.0;
 
-/// Palette group used for HUD text (white/gray glyph, black shadow).
-const TEXT_PAL: usize = 2;
+/// Palette group used for HUD text (solid font tiles: bg=1, strokes=2/3).
+const TEXT_PAL: usize = super::atlas::FONT_PAL;
 
 pub fn font_tile(c: char) -> usize {
     match c {
@@ -68,8 +68,8 @@ pub fn draw_hud(
     draw_text(atlas, 2.0, 20.0, "TIME");
     draw_num(atlas, 64.0, 20.0, cave.time_units_remaining(), 3);
     let label = format!("CAVE {}", (b'A' + cave_idx as u8) as char);
-    draw_text(atlas, 224.0, 20.0, &label);
-    draw_num(atlas, 296.0, 20.0, level as u32, 1);
+    draw_text(atlas, 288.0, 20.0, &label);
+    draw_num(atlas, 368.0, 20.0, level as u32, 1);
     let lives = format!("LIVES{}", cave.lives());
     draw_text(atlas, RIGHT - lives.len() as f32 * 8.0, 20.0, &lives);
 }

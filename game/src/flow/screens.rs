@@ -25,11 +25,13 @@ use boulder_dash::render::Renderer;
 /// Screen is 256x240.
 const W: f32 = 256.0;
 /// White/gray text palette group (matches the HUD).
-const PAL_TEXT: usize = 2;
-/// Orange/brown group — banner accents and the selected menu item.
-const PAL_ACCENT: usize = 0;
-/// Sprite palette group 2 (password digits, per $D158).
-const PAL_SPR_DIGITS: usize = 6;
+/// Overlay text palette (solid font tiles: bg=1 black, strokes=2/3 light).
+const PAL_TEXT: usize = boulder_dash::render::atlas::FONT_PAL;
+/// Accent for the selected menu item — same font palette; the diamond
+/// cursor carries the selection marker.
+const PAL_ACCENT: usize = boulder_dash::render::atlas::FONT_PAL;
+/// Password digits use the same font palette.
+const PAL_SPR_DIGITS: usize = boulder_dash::render::atlas::FONT_PAL;
 
 /// World names in ROM order ($E909 caption scripts).
 pub const WORLD_NAMES: [&str; 6] = ["BOULDER", "ICE", "SAND", "OCEAN", "RELIC", "VOLCANO"];
@@ -59,7 +61,7 @@ fn text_pal(atlas: &Atlas, x: f32, y: f32, text: &str, pal: usize) {
 fn draw_diamond(atlas: &Atlas, x: f32, y: f32, tick: u64) {
     let quad: [u8; 4] = METATILE_SEQS[Obj::Diamond as usize][0..4].try_into().unwrap();
     let pal = if (tick / 16).is_multiple_of(2) {
-        METATILE_ATTRS[Obj::Diamond as usize] as usize
+        boulder_dash::render::atlas::DIAMOND_PAL
     } else {
         PAL_TEXT
     };
@@ -268,14 +270,14 @@ pub fn draw_precave(
 /// Drawn over the frozen cave scene. The bonus is already in `total_score`;
 /// `shown` is the tally animation value.
 pub fn draw_clear_tally(atlas: &Atlas, shown: u32, total_score: u32, tick: u64) {
-    draw_rectangle(152.0, 184.0, 208.0, 76.0, Color::new(0.0, 0.0, 0.0, 0.78));
+    draw_rectangle(216.0, 152.0, 208.0, 76.0, Color::new(0.0, 0.0, 0.0, 0.78));
     if blink(tick) {
-        draw_text(atlas, 256.0 - 5.0 * 8.0, 192.0, "CAVE CLEAR");
+        draw_text(atlas, 320.0 - 5.0 * 8.0, 160.0, "CAVE CLEAR");
     }
     let bonus = format!("TIME BONUS {shown:03}");
-    draw_text(atlas, 256.0 - bonus.len() as f32 * 4.0, 224.0, &bonus);
+    draw_text(atlas, 320.0 - bonus.len() as f32 * 4.0, 192.0, &bonus);
     let score = format!("SCORE {:06}", total_score.min(999_999));
-    draw_text(atlas, 256.0 - score.len() as f32 * 4.0, 240.0, &score);
+    draw_text(atlas, 320.0 - score.len() as f32 * 4.0, 208.0, &score);
 }
 
 /// Game over / continue (ROM state 14): the decoded screen + the password
@@ -317,13 +319,13 @@ pub fn draw_ending(r: &Renderer, score: u32, tick: u64) {
 /// "DEMO" label in the HUD bar during attract mode.
 pub fn draw_demo_label(atlas: &Atlas, tick: u64) {
     if blink(tick) {
-        draw_text(atlas, 240.0, 4.0, "DEMO");
+        draw_text(atlas, 304.0, 4.0, "DEMO");
     }
 }
 
 /// Total score (banked + in-cave) over the HUD's per-cave score field.
 pub fn draw_total_score(atlas: &Atlas, total: u32) {
-    draw_rectangle(448.0, 0.0, 60.0, 12.0, BLACK);
+    draw_rectangle(584.0, 0.0, 52.0, 12.0, BLACK);
     let s = format!("{:06}", total.min(999_999));
-    draw_text(atlas, 508.0 - s.len() as f32 * 8.0, 4.0, &s);
+    draw_text(atlas, 636.0 - s.len() as f32 * 8.0, 4.0, &s);
 }
