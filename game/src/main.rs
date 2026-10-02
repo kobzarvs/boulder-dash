@@ -232,7 +232,7 @@ impl Audio {
             world: 0,
             hurry: false,
             paused: false,
-            music_enabled: true,
+            music_enabled: false,
             last_sfx: HashMap::new(),
         }
     }
