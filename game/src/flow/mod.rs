@@ -787,6 +787,16 @@ impl Flow {
         };
     }
 
+    /// Debug helpers for the interactive build: current cave index and
+    /// difficulty level (1-4) of the active player.
+    pub fn cur_cave_idx(&self) -> usize {
+        self.cur_cave_idx
+    }
+
+    pub fn cur_level(&self) -> u8 {
+        (self.players[self.active].quest + 1) as u8
+    }
+
     /// BDSHOT helper: jump straight into gameplay of cave `cave_idx`.
     /// `BDSUIT=<0-15>` picks the suit color table index (default 6).
     pub fn debug_play(&mut self, cave_idx: usize, level: u8) {

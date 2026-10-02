@@ -536,6 +536,30 @@ async fn main() {
     loop {
         let pad = read_pad();
 
+        // Debug shortcuts during gameplay: R = restart cave,
+        // [ / ] = prev/next cave, 1-4 = difficulty level.
+        if flow.state_name() == "playing" {
+            let (cave, level) = (flow.cur_cave_idx(), flow.cur_level());
+            if is_key_pressed(KeyCode::R) {
+                flow.debug_play(cave, level);
+            } else if is_key_pressed(KeyCode::LeftBracket) {
+                flow.debug_play((cave + CAVE_COUNT - 1) % CAVE_COUNT, level);
+            } else if is_key_pressed(KeyCode::RightBracket) {
+                flow.debug_play((cave + 1) % CAVE_COUNT, level);
+            } else {
+                for (key, lvl) in [
+                    (KeyCode::Key1, 1u8),
+                    (KeyCode::Key2, 2),
+                    (KeyCode::Key3, 3),
+                    (KeyCode::Key4, 4),
+                ] {
+                    if is_key_pressed(key) {
+                        flow.debug_play(cave, lvl);
+                    }
+                }
+            }
+        }
+
         // Upload sounds that finished rendering since the last frame.
         if let Some(a) = &mut audio {
             a.pump().await;
