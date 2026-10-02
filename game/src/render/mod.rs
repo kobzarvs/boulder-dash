@@ -30,7 +30,7 @@ use crate::data::tiles::{METATILE_ATTRS, METATILE_SEQS};
 use crate::engine::{Cave, Obj, HEIGHT, WIDTH};
 
 use atlas::Atlas;
-use camera::{Camera, VIEW_H, VIEW_W};
+use camera::{Camera, CELL_PX, VIEW_H, VIEW_W};
 use hud::HUD_H;
 use nametable::Screens;
 use rockford::{RockfordAnim, RockfordArt};
@@ -109,7 +109,7 @@ impl Renderer {
                 if door_open {
                     // Open-door quad ($F3F3 = record quad 8), flashing bright.
                     let pal = if (frame / 8).is_multiple_of(2) {
-                        atlas::world_pal(var, 2)
+                        atlas::SPARKLE_PAL
                     } else {
                         atlas::world_pal(var, attr)
                     };
@@ -122,7 +122,7 @@ impl Renderer {
                 if magic_active {
                     // Active magic wall quad ($F3EB = record quad 6), flashing.
                     let pal = if (frame / 4).is_multiple_of(2) {
-                        atlas::world_pal(var, 2)
+                        atlas::SPARKLE_PAL
                     } else {
                         atlas::world_pal(var, attr)
                     };
@@ -136,13 +136,13 @@ impl Renderer {
                 let pal = if (frame / 16).is_multiple_of(2) {
                     atlas::DIAMOND_PAL
                 } else {
-                    atlas::world_pal(var, 2)
+                    atlas::SPARKLE_PAL
                 };
                 (self.quad_of(Obj::Diamond), pal)
             }
             Obj::ExplosionRemnant => {
                 let pal = if (frame / 4).is_multiple_of(2) {
-                    atlas::world_pal(var, 2)
+                    atlas::SPARKLE_PAL
                 } else {
                     atlas::world_pal(var, attr)
                 };
@@ -161,11 +161,11 @@ impl Renderer {
                 // unrelated worlds-5/6 art, so the body never comes from
                 // the cave's `bank` when that is 6.
                 let bbank = ((frame / 8) % 4) as usize;
-                self.atlas.draw_quad(ROCKFORD_BODY_QUAD, bbank, atlas::world_pal(var, 0), x, y);
+                self.atlas.draw_quad_scaled(ROCKFORD_BODY_QUAD, bbank, atlas::world_pal(var, 0), x, y, CELL_PX / 16.0);
                 return;
             }
         };
-        self.atlas.draw_quad(quad, bank, pal, x, y);
+        self.atlas.draw_quad_scaled(quad, bank, pal, x, y, CELL_PX / 16.0);
     }
 
     /// Cave field + Rockford's head overlay, clipped to the viewport under
@@ -184,14 +184,14 @@ impl Renderer {
     ) {
         let bank = world_bank(cave_idx);
         let door_open = cave.door_open();
-        let x0 = (cam.x / 16.0).floor().max(0.0) as usize;
-        let x1 = ((cam.x + VIEW_W) / 16.0).ceil().min(WIDTH as f32) as usize;
-        let y0 = (cam.y / 16.0).floor().max(0.0) as usize;
-        let y1 = ((cam.y + VIEW_H) / 16.0).ceil().min(HEIGHT as f32) as usize;
+        let x0 = (cam.x / CELL_PX).floor().max(0.0) as usize;
+        let x1 = ((cam.x + VIEW_W) / CELL_PX).ceil().min(WIDTH as f32) as usize;
+        let y0 = (cam.y / CELL_PX).floor().max(0.0) as usize;
+        let y1 = ((cam.y + VIEW_H) / CELL_PX).ceil().min(HEIGHT as f32) as usize;
         for cy in y0..y1 {
             for cx in x0..x1 {
-                let sx = cx as f32 * 16.0 - cam.x;
-                let sy = HUD_H + cy as f32 * 16.0 - cam.y;
+                let sx = cx as f32 * CELL_PX - cam.x;
+                let sy = HUD_H + cy as f32 * CELL_PX - cam.y;
                 let cell = cave.cell_at(cx, cy);
                 self.draw_cell(
                     cell.obj,
@@ -206,9 +206,9 @@ impl Renderer {
             }
         }
         if let Some(head) = rock.head_frame(frame) {
-            let sx = rock.pos.0 * 16.0 - cam.x;
-            let sy = HUD_H + rock.pos.1 * 16.0 - cam.y;
-            self.rockford_art.draw_head(head, suit, sx, sy);
+            let sx = rock.pos.0 * CELL_PX - cam.x;
+            let sy = HUD_H + rock.pos.1 * CELL_PX - cam.y;
+            self.rockford_art.draw_head(head, suit, sx, sy, CELL_PX / 16.0);
         }
     }
 

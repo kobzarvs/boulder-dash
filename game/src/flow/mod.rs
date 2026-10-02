@@ -40,7 +40,7 @@ use macroquad::prelude::*;
 
 use boulder_dash::audio::slots;
 use boulder_dash::engine::{Cave, CaveStatus, Event, Input, START_RESERVE_LIVES};
-use boulder_dash::render::camera::Camera;
+use boulder_dash::render::camera::{Camera, CELL_PX};
 use boulder_dash::render::rockford::RockfordAnim;
 use boulder_dash::render::Renderer;
 
@@ -540,14 +540,14 @@ impl Flow {
 
         if let Some(rock) = &self.rock {
             let (px, py) = rock.pos;
-            self.cam.follow(px * 16.0, py * 16.0, TICK);
+            self.cam.follow(px * CELL_PX, py * CELL_PX, TICK);
         }
 
         if respawned {
             let cave = self.caves[self.active].as_ref().unwrap();
             self.rock = Some(RockfordAnim::new(cave));
             let (px, py) = self.rock.as_ref().unwrap().pos;
-            self.cam.snap(px * 16.0, py * 16.0);
+            self.cam.snap(px * CELL_PX, py * CELL_PX);
             self.magic_active = false;
             if let Some(a) = audio {
                 a.respawned();
@@ -644,7 +644,7 @@ impl Flow {
         let cave = self.caves[self.active].as_ref().expect("session without cave");
         self.rock = Some(RockfordAnim::new(cave));
         let (px, py) = self.rock.as_ref().unwrap().pos;
-        self.cam.snap(px * 16.0, py * 16.0);
+        self.cam.snap(px * CELL_PX, py * CELL_PX);
         self.magic_active = false;
         self.paused = false;
         if let Some(a) = audio {

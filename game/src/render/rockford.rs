@@ -80,16 +80,17 @@ impl RockfordArt {
     }
 
     /// Draw the 16x8 head overlay with the body's top-left at (`x`, `y`)
-    /// (record offsets Y+16 / X+8 place the head there; attr $40 h-flips).
-    pub fn draw_head(&self, frame: &HeadFrame, color_idx: usize, x: f32, y: f32) {
+    /// (record offsets Y+16 / X+8 place the head there; attr $40 h-flips),
+    /// scaled by `scale` (CELL_PX/16 for the cave field).
+    pub fn draw_head(&self, frame: &HeadFrame, color_idx: usize, x: f32, y: f32, scale: f32) {
         let row = color_idx % ROCKFORD_COLORS.len();
         for s in frame {
             let col = ROCKFORD_HEAD_TILES
                 .iter()
                 .position(|&t| t == s[1])
                 .expect("head tile missing from ROCKFORD_HEAD_TILES");
-            let dx = s[3] as i8 as f32 + 8.0;
-            let dy = s[0] as i8 as f32 + 16.0;
+            let dx = (s[3] as i8 as f32 + 8.0) * scale;
+            let dy = (s[0] as i8 as f32 + 16.0) * scale;
             draw_texture_ex(
                 &self.tex,
                 x + dx,
@@ -97,6 +98,7 @@ impl RockfordArt {
                 WHITE,
                 DrawTextureParams {
                     source: Some(Rect::new(col as f32 * 8.0, row as f32 * 8.0, 8.0, 8.0)),
+                    dest_size: Some(vec2(8.0 * scale, 8.0 * scale)),
                     flip_x: s[2] & 0x40 != 0,
                     ..Default::default()
                 },

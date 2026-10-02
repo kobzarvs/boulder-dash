@@ -18,7 +18,7 @@ use crate::data::tiles::{TILES, TILE_COUNT};
 pub const BG_PALETTES: usize = 24;
 /// Sprite palette rows (high 16 bytes of PALETTE_MAIN); pixel 0 transparent.
 pub const SPRITE_PALETTES: usize = 4;
-pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES + 2;
+pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES + 3;
 
 /// Extra baked palette row: light-blue diamonds. The ROM colors diamonds
 /// with the orange wall palette (attr 0); the remake uses the classic blue.
@@ -31,6 +31,11 @@ const DIAMOND_BLUE: [u8; 4] = [0x0F, 0x11, 0x21, 0x30];
 /// 2 -> BLACK shadow (reads as an outline on bright backgrounds), 3 -> white.
 pub const FONT_PAL: usize = 29;
 const FONT_COLORS: [u8; 4] = [0x0F, 0x0F, 0x0F, 0x20];
+
+/// Extra baked palette row: all-white sparkle flash (diamond shimmer,
+/// door/magic-wall/explosion flash).
+pub const SPARKLE_PAL: usize = 30;
+const SPARKLE_COLORS: [u8; 4] = [0x0F, 0x30, 0x30, 0x30];
 
 /// Palette row for a world's background group: world 0-5, attr 0-3.
 pub fn world_pal(world: usize, attr: usize) -> usize {
@@ -58,6 +63,7 @@ fn palette_table(pal: usize) -> &'static [u8; 4] {
             .unwrap(),
         DIAMOND_PAL => &DIAMOND_BLUE,
         FONT_PAL => &FONT_COLORS,
+        SPARKLE_PAL => &SPARKLE_COLORS,
         _ => unreachable!("bad palette row {pal}"),
     }
 }
@@ -223,6 +229,11 @@ impl Atlas {
 
     /// Draw one 8x8 tile (global CHR index) tinted by palette `pal` at px (x, y).
     pub fn draw_tile(&self, tile: usize, pal: usize, x: f32, y: f32) {
+        self.draw_tile_scaled(tile, pal, x, y, 1.0);
+    }
+
+    /// Draw one 8x8 tile scaled to 8*scale px.
+    pub fn draw_tile_scaled(&self, tile: usize, pal: usize, x: f32, y: f32, scale: f32) {
         let idx = pal * TILE_COUNT + (tile & 0x7FF);
         let sx = ((idx % ATLAS_COLS) * 8) as f32;
         let sy = ((idx / ATLAS_COLS) * 8) as f32;
@@ -233,6 +244,7 @@ impl Atlas {
             WHITE,
             DrawTextureParams {
                 source: Some(Rect::new(sx, sy, 8.0, 8.0)),
+                dest_size: Some(vec2(8.0 * scale, 8.0 * scale)),
                 ..Default::default()
             },
         );
@@ -241,10 +253,23 @@ impl Atlas {
     /// Draw a 2x2-tile metatile quad `[tl, tr, bl, br]`; entries are indices
     /// into the given CHR bank's 256-tile pattern table.
     pub fn draw_quad(&self, quad: [u8; 4], bank: usize, pal: usize, x: f32, y: f32) {
+        self.draw_quad_scaled(quad, bank, pal, x, y, 1.0);
+    }
+
+    /// Same as `draw_quad`, scaled to (16*scale) px cells.
+    pub fn draw_quad_scaled(
+        &self,
+        quad: [u8; 4],
+        bank: usize,
+        pal: usize,
+        x: f32,
+        y: f32,
+        scale: f32,
+    ) {
         for (pos, &t) in quad.iter().enumerate() {
-            let dx = (pos % 2) as f32 * 8.0;
-            let dy = (pos / 2) as f32 * 8.0;
-            self.draw_tile(bank * 256 + t as usize, pal, x + dx, y + dy);
+            let dx = (pos % 2) as f32 * 8.0 * scale;
+            let dy = (pos / 2) as f32 * 8.0 * scale;
+            self.draw_tile_scaled(bank * 256 + t as usize, pal, x + dx, y + dy, scale);
         }
     }
 }
