@@ -158,28 +158,54 @@ impl Atlas {
     }
 
     /// Text as a transparent texture: the ROM font tiles are solid (background
-    /// pixels = value 1), so for overlays on bright screens value 1 is skipped
-    /// and only the glyph strokes (2/3) are drawn, in palette `pal`.
+    /// pixels = value 1), so for overlays on bright screens the background is
+    /// skipped and the glyph strokes are drawn as a light glyph with a 1px
+    /// dark OUTLINE (readable on any backdrop, unlike the font's own heavy
+    /// shadow). Texture is 2 px wider/taller for the outline; draw it at
+    /// (x-1, y-1) to keep the logical position.
     pub fn text_texture(&self, text: &str, pal: usize) -> Texture2D {
         let key = (text.to_owned(), pal as u8);
         self.text_tex.borrow_mut().entry(key).or_insert_with(|| {
             let table = palette_table(pal);
-            let w = (text.chars().count().max(1) * 8) as u16;
-            let mut img = Image::gen_image_color(w, 8, Color::new(0.0, 0.0, 0.0, 0.0));
+            let glyph_rgb = NES_PALETTE[(table[3] & 0x3F) as usize];
+            let outline_rgb = NES_PALETTE[0x0F];
+            let to_color = |[r, g, b]: [u8; 3]| {
+                Color::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0)
+            };
+            let chars = text.chars().count().max(1);
+            let (w, h) = ((chars * 8 + 2) as usize, 10usize);
+            let mut glyph = vec![false; w * h];
             for (i, c) in text.chars().enumerate() {
                 let px = &TILES[super::hud::font_tile(c)];
                 for y in 0..8 {
                     for x in 0..8 {
-                        let v = px[y * 8 + x] as usize;
-                        if v <= 1 {
-                            continue; // 0/1 = background
+                        if px[y * 8 + x] >= 2 {
+                            glyph[(y + 1) * w + (i * 8 + x + 1)] = true;
                         }
-                        let [r, g, b] = NES_PALETTE[(table[v] & 0x3F) as usize];
-                        img.set_pixel(
-                            (i * 8 + x) as u32,
-                            y as u32,
-                            Color::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0),
-                        );
+                    }
+                }
+            }
+            let mut img = Image::gen_image_color(w as u16, h as u16, Color::new(0.0, 0.0, 0.0, 0.0));
+            // Outline first (glyph pixels painted over it below).
+            for y in 0..h {
+                for x in 0..w {
+                    if glyph[y * w + x] {
+                        continue;
+                    }
+                    let near = [[-1i32, 0], [1, 0], [0, -1], [0, 1]].iter().any(|[dx, dy]| {
+                        let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                        nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h
+                            && glyph[ny as usize * w + nx as usize]
+                    });
+                    if near {
+                        img.set_pixel(x as u32, y as u32, to_color(outline_rgb));
+                    }
+                }
+            }
+            for y in 0..h {
+                for x in 0..w {
+                    if glyph[y * w + x] {
+                        img.set_pixel(x as u32, y as u32, to_color(glyph_rgb));
                     }
                 }
             }
@@ -192,7 +218,7 @@ impl Atlas {
 
     /// Draw text with a transparent background (overlay on bright screens).
     pub fn draw_text_clear(&self, text: &str, pal: usize, x: f32, y: f32) {
-        draw_texture(&self.text_texture(text, pal), x, y, WHITE);
+        draw_texture(&self.text_texture(text, pal), x - 1.0, y - 1.0, WHITE);
     }
 
     /// Draw one 8x8 tile (global CHR index) tinted by palette `pal` at px (x, y).
