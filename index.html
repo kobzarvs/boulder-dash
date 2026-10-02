@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Boulder Dash</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { image-rendering: pixelated; outline: none; }
+</style>
+</head>
+<body>
+<canvas id="glcanvas" tabindex="1"></canvas>
+<!-- macroquad's JS runtime (canvas/GL/input/clipboard glue). -->
+<script src="https://not-fl3.github.io/macroquad-0.4.16/mq_js_bundle.js"></script>
+<!-- quad-snd 0.2.8 WebAudio backend (MIT, from the quad-snd crate's js/audio.js),
+     provides the audio_* imports the wasm module links against. -->
+<script src="quad_snd_audio.js"></script>
+<script>
+  // Build: cargo build --release --target wasm32-unknown-unknown -p boulder-dash
+  // then copy target/wasm32-unknown-unknown/release/boulder-dash.wasm next to
+  // this file (or serve the repo root and point the path at target/...).
+  load("boulder-dash.wasm");
+</script>
+</body>
+</html>
