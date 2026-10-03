@@ -664,6 +664,7 @@ async fn main() {
 
     loop {
         let pad = read_pad();
+        let shift = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
 
         // M = music on/off (SFX keep playing).
         if is_key_pressed(KeyCode::M) {
@@ -679,7 +680,7 @@ async fn main() {
         }
 
         // Debug shortcuts during gameplay: R = restart cave,
-        // [ / ] = prev/next cave, 1-4 = difficulty level.
+        // [ / ] = prev/next cave, Shift+1-4 = difficulty level.
         if flow.state_name() == "playing" {
             let (cave, level) = (flow.cur_cave_idx(), flow.cur_level());
             if is_key_pressed(KeyCode::R) {
@@ -688,7 +689,7 @@ async fn main() {
                 flow.debug_play((cave + CAVE_COUNT - 1) % CAVE_COUNT, level);
             } else if is_key_pressed(KeyCode::RightBracket) {
                 flow.debug_play((cave + 1) % CAVE_COUNT, level);
-            } else {
+            } else if shift {
                 for (key, lvl) in [
                     (KeyCode::Key1, 1u8),
                     (KeyCode::Key2, 2),
@@ -698,6 +699,38 @@ async fn main() {
                     if is_key_pressed(key) {
                         flow.debug_play(cave, lvl);
                     }
+                }
+            }
+        }
+
+        // Cave-jump cheat, in any state: two digits (01..24) within 2 s
+        // teleport to that cave (see Flow::cave_code_digit). Skipped while
+        // Shift is held so Shift+1-4 keeps meaning "difficulty level".
+        if !shift {
+            for (key, d) in [
+                (KeyCode::Key0, 0u8),
+                (KeyCode::Key1, 1),
+                (KeyCode::Key2, 2),
+                (KeyCode::Key3, 3),
+                (KeyCode::Key4, 4),
+                (KeyCode::Key5, 5),
+                (KeyCode::Key6, 6),
+                (KeyCode::Key7, 7),
+                (KeyCode::Key8, 8),
+                (KeyCode::Key9, 9),
+                (KeyCode::Kp0, 0),
+                (KeyCode::Kp1, 1),
+                (KeyCode::Kp2, 2),
+                (KeyCode::Kp3, 3),
+                (KeyCode::Kp4, 4),
+                (KeyCode::Kp5, 5),
+                (KeyCode::Kp6, 6),
+                (KeyCode::Kp7, 7),
+                (KeyCode::Kp8, 8),
+                (KeyCode::Kp9, 9),
+            ] {
+                if is_key_pressed(key) {
+                    flow.cave_code_digit(d, &mut audio);
                 }
             }
         }

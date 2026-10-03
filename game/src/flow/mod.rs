@@ -218,6 +218,8 @@ pub struct Flow {
     tick: u64,
     prev_pad: Pad,
     demo_next: usize,
+    /// Cave-jump cheat accumulator: first digit + the tick it arrived on.
+    cave_code: Option<(u8, u64)>,
 }
 
 fn set_music(audio: &mut Option<Audio>, slot: usize) {
@@ -250,6 +252,7 @@ impl Flow {
             tick: 0,
             prev_pad: Pad::default(),
             demo_next: 0,
+            cave_code: None,
         }
     }
 
@@ -812,6 +815,36 @@ impl Flow {
         (self.players[self.active].quest + 1) as u8
     }
 
+    /// Cave-jump cheat: two decimal digits within a 2 s window teleport to
+    /// cave `10*a+b` (1-based, so `01` is cave A) at the current difficulty
+    /// level. Invalid codes (`00`, `25`+) are ignored.
+    pub fn cave_code_digit(&mut self, digit: u8, audio: &mut Option<Audio>) {
+        const WINDOW: u64 = 120;
+        match self.cave_code {
+            Some((first, tick)) if self.tick - tick <= WINDOW => {
+                self.cave_code = None;
+                let n = (first * 10 + digit) as usize;
+                if (1..=boulder_dash::data::caves::CAVE_COUNT).contains(&n) {
+                    self.jump_to_cave(n - 1, audio);
+                }
+            }
+            _ => self.cave_code = Some((digit, self.tick)),
+        }
+    }
+
+    /// Cheat jump: enter cave `cave_idx` (0-based) immediately, keeping the
+    /// active player's difficulty level. Works from any state.
+    fn jump_to_cave(&mut self, cave_idx: usize, audio: &mut Option<Audio>) {
+        let level = (self.players[self.active].quest + 1) as u8;
+        let p = &mut self.players[self.active];
+        p.world = cave_idx / TOWNS_PER_WORLD;
+        p.town = cave_idx % TOWNS_PER_WORLD;
+        self.caves[self.active] = Some(Cave::new(cave_idx, level, 0));
+        self.cur_cave_idx = cave_idx;
+        self.enter_session(audio);
+        self.state = State::Playing { demo: None };
+    }
+
     /// BDSHOT helper: jump straight into gameplay of cave `cave_idx`.
     /// `BDSUIT=<0-15>` picks the suit color table index (default 6).
     pub fn debug_play(&mut self, cave_idx: usize, level: u8) {
@@ -898,6 +931,43 @@ mod tests {
         // 1P: color select runs once, then password.
         tap(&mut f, Pad { a: true, ..Default::default() });
         assert_eq!(f.state_name(), "password");
+    }
+
+    #[test]
+    fn cave_code_jumps_to_numbered_cave() {
+        let mut f = Flow::new();
+        // "05" -> cave index 4, from the title screen.
+        f.cave_code_digit(0, &mut none_audio());
+        assert_eq!(f.state_name(), "title");
+        f.cave_code_digit(5, &mut none_audio());
+        assert_eq!(f.state_name(), "playing");
+        assert_eq!(f.cur_cave_idx(), 4);
+        // "24" -> the last cave; "00"/"25" are ignored.
+        f.cave_code_digit(2, &mut none_audio());
+        f.cave_code_digit(4, &mut none_audio());
+        assert_eq!(f.cur_cave_idx(), 23);
+        f.cave_code_digit(0, &mut none_audio());
+        f.cave_code_digit(0, &mut none_audio());
+        assert_eq!(f.cur_cave_idx(), 23);
+        f.cave_code_digit(2, &mut none_audio());
+        f.cave_code_digit(5, &mut none_audio());
+        assert_eq!(f.cur_cave_idx(), 23);
+    }
+
+    #[test]
+    fn cave_code_first_digit_times_out() {
+        let mut f = Flow::new();
+        f.cave_code_digit(1, &mut none_audio());
+        // 2 s later the pending digit is stale: "1" then (late) "2" starts a
+        // new code instead of jumping to cave 12.
+        for _ in 0..130 {
+            f.update(Pad::default(), &mut none_audio());
+        }
+        f.cave_code_digit(2, &mut none_audio());
+        assert_eq!(f.state_name(), "title");
+        f.cave_code_digit(1, &mut none_audio());
+        assert_eq!(f.state_name(), "playing");
+        assert_eq!(f.cur_cave_idx(), 20); // "21"
     }
 
     #[test]
