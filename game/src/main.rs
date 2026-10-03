@@ -462,15 +462,18 @@ fn parse_shot() -> Option<ShotSpec> {
             Err(_) => continue,
         };
         let mut input = Input::NONE;
-        match code {
-            "R" => input.right = true,
-            "L" => input.left = true,
-            "U" => input.up = true,
-            "D" => input.down = true,
-            "G" => input.grab = true,
-            "S" => input.suicide = true,
-            "N" => {}
-            _ => continue,
+        // Combos allowed: "GL" = grab+left, "GU"/"GD"/"GR" similarly.
+        for c in code.chars() {
+            match c {
+                'R' => input.right = true,
+                'L' => input.left = true,
+                'U' => input.up = true,
+                'D' => input.down = true,
+                'G' => input.grab = true,
+                'S' => input.suicide = true,
+                'N' => {}
+                _ => {}
+            }
         }
         script.push((input, n));
     }
