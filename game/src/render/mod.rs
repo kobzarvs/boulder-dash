@@ -225,6 +225,10 @@ impl Renderer {
         let x1 = ((cam.x + VIEW_W) / CELL_PX).ceil().min(WIDTH as f32) as usize;
         let y0 = (cam.y / CELL_PX).floor().max(0.0) as usize;
         let y1 = ((cam.y + VIEW_H) / CELL_PX).ceil().min(HEIGHT as f32) as usize;
+        // Sliding objects are drawn AFTER the whole cell loop: their quads
+        // overhang into the source cell, which would otherwise be drawn later
+        // and clip them (visible on leftward slides).
+        let mut sliding = Vec::new();
         for cy in y0..y1 {
             for cx in x0..x1 {
                 let cell = cave.cell_at(cx, cy);
@@ -248,16 +252,7 @@ impl Renderer {
                         );
                         let sx = fx * CELL_PX - cam.x;
                         let sy = HUD_H + fy * CELL_PX - cam.y;
-                        self.draw_cell_sliding(
-                            obj,
-                            cave_idx,
-                            bank,
-                            sx,
-                            sy,
-                            frame,
-                            door_open,
-                            magic_active,
-                        );
+                        sliding.push((obj, sx, sy));
                     }
                     None => self.draw_cell(
                         cell.obj,
@@ -271,6 +266,9 @@ impl Renderer {
                     ),
                 }
             }
+        }
+        for (obj, sx, sy) in sliding {
+            self.draw_cell_sliding(obj, cave_idx, bank, sx, sy, frame, door_open, magic_active);
         }
         if let Some(head) = rock.head_frame(frame) {
             // Body + head TOGETHER at the fractional slide position (the NES
