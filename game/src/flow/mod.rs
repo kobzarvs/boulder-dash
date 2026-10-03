@@ -208,6 +208,8 @@ pub struct Flow {
     cur_cave_idx: usize,
     rock: Option<RockfordAnim>,
     slides: SlideTracker,
+    /// White screen-flash frames remaining (door-open effect, 5 ticks).
+    door_flash: u8,
     cam: Camera,
     magic_active: bool,
     paused: bool,
@@ -240,6 +242,7 @@ impl Flow {
             cur_cave_idx: 0,
             rock: None,
             slides: SlideTracker::default(),
+            door_flash: 0,
             cam: Camera::new(),
             magic_active: false,
             paused: false,
@@ -525,6 +528,7 @@ impl Flow {
                         a.on_death(cause, self.tick);
                     }
                 }
+                Event::DoorOpened { .. } => self.door_flash = 5,
                 Event::MagicWallActivated => self.magic_active = true,
                 Event::MagicWallExpired => self.magic_active = false,
                 Event::Sound(cue) => {
@@ -539,6 +543,7 @@ impl Flow {
             rock.update(&cave);
         }
         self.slides.update(&cave, self.tick);
+        self.door_flash = self.door_flash.saturating_sub(1);
         let game_over = matches!(cave.status(), CaveStatus::GameOver);
         self.caves[self.active] = Some(cave);
 
@@ -741,6 +746,9 @@ impl Flow {
         if let Some(rock) = &self.rock {
             let suit = self.players[self.active].color_idx;
             renderer.draw_world(cave, self.cur_cave_idx, &self.cam, self.tick, self.magic_active, rock, &self.slides, suit);
+            if self.door_flash > 0 {
+                renderer.draw_door_flash(self.door_flash);
+            }
         }
         // HUD bar: opaque over the top (covers viewport bleed), then contents.
         draw_rectangle(0.0, 0.0, SCREEN_W, 32.0, BLACK);
@@ -816,6 +824,9 @@ impl Flow {
                     p.color_idx = idx % 16;
                 }
             }
+        }
+        if std::env::var("BDFLASH").is_ok() {
+            self.door_flash = 5;
         }
         self.caves[0] = Some(Cave::new(cave_idx, level, 0));
         self.active = 0;

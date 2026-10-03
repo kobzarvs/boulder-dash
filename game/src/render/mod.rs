@@ -305,6 +305,18 @@ impl Renderer {
         hud::draw_hud(&self.atlas, cave, cave_idx, level, world_bank(cave_idx), frame);
     }
 
+    /// Full-frame white flash for the door-open effect (5 ticks, fading).
+    pub fn draw_door_flash(&self, frames_left: u8) {
+        let alpha = 0.85 * frames_left as f32 / 5.0;
+        draw_rectangle(
+            0.0,
+            0.0,
+            camera::VIEW_W,
+            hud::HUD_H + camera::VIEW_H,
+            Color::new(1.0, 1.0, 1.0, alpha),
+        );
+    }
+
     /// Centered overlay text inside the cave viewport (messages, pause).
     pub fn draw_overlay(&self, lines: &[&str], frame: u64) {
         let blink = (frame / 24).is_multiple_of(2);
