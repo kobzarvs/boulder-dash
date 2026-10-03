@@ -25,6 +25,7 @@ pub mod atlas;
 pub mod boulder;
 pub mod camera;
 pub mod diamond;
+pub mod glow;
 pub mod hud;
 pub mod nametable;
 pub mod rockford;
@@ -42,6 +43,7 @@ use atlas::Atlas;
 use boulder::BoulderArt;
 use camera::{Camera, CELL_PX, VIEW_H, VIEW_W};
 use diamond::DiamondArt;
+use glow::DiamondGlow;
 use hud::HUD_H;
 use nametable::Screens;
 use rockford::{RockfordAnim, RockfordArt};
@@ -57,6 +59,7 @@ pub struct Renderer {
     diamond_art: DiamondArt,
     wall_art: WallArt,
     wall_shadow: WallShadow,
+    diamond_glow: DiamondGlow,
 }
 
 /// CHR bank holding the cave's world art: banks 0-3 for worlds 1-4,
@@ -102,6 +105,7 @@ impl Renderer {
             diamond_art: DiamondArt::new(),
             wall_art: WallArt::new(),
             wall_shadow: WallShadow::new(),
+            diamond_glow: DiamondGlow::new(),
         }
     }
 
@@ -153,7 +157,11 @@ impl Renderer {
             return;
         }
         if obj == Obj::Steel {
-            self.wall_art.draw(cell_idx, x, y, CELL_PX);
+            self.wall_art.draw_steel(cell_idx, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Brick {
+            self.wall_art.draw_brick(cell_idx, x, y, CELL_PX);
             return;
         }
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
@@ -303,6 +311,13 @@ impl Renderer {
         // overhang into the source cell, which would otherwise be drawn later
         // and clip them (visible on leftward slides).
         let mut sliding = Vec::new();
+        // Diamond glow halos, drawn after the terrain so they light up the
+        // cells around the gem (additive pass before sliding items).
+        let mut glows = Vec::new();
+        // Static diamonds are deferred and drawn AFTER the glow pass, so
+        // the halo lights the surroundings without washing out the gem's
+        // own sparkle.
+        let mut diamonds = Vec::new();
         for cy in y0..y1 {
             for cx in x0..x1 {
                 let cell = cave.cell_at(cx, cy);
@@ -332,29 +347,62 @@ impl Renderer {
                         sliding.push((obj, idx, slides.spin_for(idx, frame), sx, sy));
                     }
                     None => {
-                        // HD items sit on the world's BACKDROP (Space art),
-                        // never on dirt: the background shows around the
-                        // sprite instead of a black void or a mud patch.
-                        self.draw_cell(
-                            cell.obj,
-                            idx,
-                            slides.rest_spin(idx),
-                            Obj::Space,
-                            cave_idx,
-                            bank,
-                            sx_c,
-                            sy_c,
-                            frame,
-                            door_open,
-                            magic_active,
-                        )
+                        if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) {
+                            // Backdrop now, gem sprite after the glow pass.
+                            self.draw_backdrop(
+                                Obj::Space,
+                                cave_idx,
+                                bank,
+                                sx_c,
+                                sy_c,
+                                frame,
+                                door_open,
+                                magic_active,
+                            );
+                            diamonds.push((sx_c, sy_c));
+                        } else {
+                            // HD items sit on the world's BACKDROP (Space art),
+                            // never on dirt: the background shows around the
+                            // sprite instead of a black void or a mud patch.
+                            self.draw_cell(
+                                cell.obj,
+                                idx,
+                                slides.rest_spin(idx),
+                                Obj::Space,
+                                cave_idx,
+                                bank,
+                                sx_c,
+                                sy_c,
+                                frame,
+                                door_open,
+                                magic_active,
+                            )
+                        }
                     }
                 }
                 let (shade_left, shade_top) = wall_shadow_sides(cave, cx, cy);
                 self.wall_shadow.draw(shade_left, shade_top, sx_c, sy_c, CELL_PX);
+                if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) {
+                    glows.push((sx_c + CELL_PX / 2.0, sy_c + CELL_PX / 2.0));
+                }
             }
         }
+        if !glows.is_empty() {
+            self.diamond_glow.apply_material();
+            for (gx, gy) in glows {
+                self.diamond_glow.draw(frame, gx, gy, CELL_PX);
+            }
+            self.diamond_glow.reset_material();
+        }
+        for (dx, dy) in diamonds {
+            self.diamond_art.draw(frame, dx, dy, CELL_PX);
+        }
         for (obj, idx, spin, sx, sy) in sliding {
+            if matches!(obj, Obj::Diamond | Obj::PendingDiamond) {
+                self.diamond_glow.apply_material();
+                self.diamond_glow.draw(frame, sx + CELL_PX / 2.0, sy + CELL_PX / 2.0, CELL_PX);
+                self.diamond_glow.reset_material();
+            }
             self.draw_cell_sliding(obj, idx, spin, cave_idx, bank, sx, sy, frame, door_open, magic_active);
         }
         if let Some(head) = rock.head_frame(frame) {
