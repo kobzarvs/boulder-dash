@@ -67,11 +67,7 @@ fn text_pal(atlas: &Atlas, x: f32, y: f32, text: &str, pal: usize) {
 /// Transparent background (markers sit over bright map/menu art).
 fn draw_diamond(atlas: &Atlas, x: f32, y: f32, tick: u64) {
     let quad: [u8; 4] = METATILE_SEQS[Obj::Diamond as usize][0..4].try_into().unwrap();
-    let pal = if (tick / 16).is_multiple_of(2) {
-        boulder_dash::render::atlas::DIAMOND_PAL
-    } else {
-        PAL_TEXT
-    };
+    let pal = boulder_dash::render::atlas::diamond_pal(tick);
     draw_texture(&atlas.quad_texture(quad, 0, pal), x, y, WHITE);
 }
 

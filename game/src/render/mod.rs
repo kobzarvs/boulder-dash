@@ -132,13 +132,8 @@ impl Renderer {
                 }
             }
             Obj::Diamond | Obj::PendingDiamond => {
-                // Classic blue diamonds with a white sparkle flash.
-                let pal = if (frame / 16).is_multiple_of(2) {
-                    atlas::DIAMOND_PAL
-                } else {
-                    atlas::SPARKLE_PAL
-                };
-                (self.quad_of(Obj::Diamond), pal)
+                // Blue diamonds with a glint traveling across the facets.
+                (self.quad_of(Obj::Diamond), atlas::diamond_pal(frame))
             }
             Obj::ExplosionRemnant => {
                 let pal = if (frame / 4).is_multiple_of(2) {

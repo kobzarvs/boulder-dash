@@ -31,13 +31,13 @@ pub fn init_font() {
 /// Right edge of the HUD bar (screen is 640 px wide).
 const RIGHT: f32 = 636.0;
 
-/// Built-in-font size for UI text (~16 px glyph; double the original).
-pub const FONT_SIZE: f32 = 24.0;
+/// Built-in-font size for UI text (75% of the first pass).
+pub const FONT_SIZE: f32 = 18.0;
 /// Rasterization size; drawn at FONT_SIZE via font_scale, so glyphs are
-/// supersampled ~2x and stay smooth under camera/window zoom.
+/// supersampled and stay smooth under camera/window zoom.
 const RASTER_SIZE: u16 = 48;
 /// Baseline offset from a text row top.
-pub const BASELINE: f32 = 17.0;
+pub const BASELINE: f32 = 14.0;
 
 fn text_params(color: Color, size: f32) -> TextParams<'static> {
     TextParams {
@@ -108,7 +108,7 @@ pub fn draw_hud(
     let dpal = if door_open && (frame / 8).is_multiple_of(2) {
         super::atlas::FONT_PAL
     } else {
-        super::atlas::DIAMOND_PAL
+        super::atlas::diamond_pal(frame)
     };
     atlas.draw_quad(dquad, world_bank, dpal, 4.0, 8.0);
     let remaining = cave.diamonds_needed().saturating_sub(cave.diamonds_collected());

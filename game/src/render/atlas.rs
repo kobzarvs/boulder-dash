@@ -18,13 +18,27 @@ use crate::data::tiles::{TILES, TILE_COUNT};
 pub const BG_PALETTES: usize = 24;
 /// Sprite palette rows (high 16 bytes of PALETTE_MAIN); pixel 0 transparent.
 pub const SPRITE_PALETTES: usize = 4;
-pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES + 3;
+pub const PALETTE_COUNT: usize = BG_PALETTES + SPRITE_PALETTES + 5;
 
 /// Extra baked palette row: light-blue diamonds. The ROM colors diamonds
 /// with the orange wall palette (attr 0); the remake uses the classic blue.
 pub const DIAMOND_PAL: usize = 28;
 /// [backdrop, shade, body, sparkle] for DIAMOND_PAL.
 const DIAMOND_BLUE: [u8; 4] = [0x0F, 0x11, 0x21, 0x30];
+
+/// Diamond shimmer phases: the white glint travels across the facets
+/// (pixel values v3 -> v2 -> v1 and back), a smooth sparkle instead of
+/// blinking between two colors.
+pub const SHIMMER_1: usize = 31;
+pub const SHIMMER_2: usize = 32;
+const SHIMMER_1_COLORS: [u8; 4] = [0x0F, 0x11, 0x30, 0x21];
+const SHIMMER_2_COLORS: [u8; 4] = [0x0F, 0x30, 0x21, 0x11];
+
+/// Diamond palette for a frame: phases 0,1,2,1 looping (~0.66 s/glint).
+pub fn diamond_pal(frame: u64) -> usize {
+    const SEQ: [usize; 4] = [DIAMOND_PAL, SHIMMER_1, SHIMMER_2, SHIMMER_1];
+    SEQ[(frame / 10) as usize % 4]
+}
 
 /// Extra baked palette row: HUD/overlay text. The ROM font tiles are SOLID
 /// (background pixels = value 1, glyph strokes = 2/3). Map 1 -> black,
@@ -64,6 +78,8 @@ fn palette_table(pal: usize) -> &'static [u8; 4] {
         DIAMOND_PAL => &DIAMOND_BLUE,
         FONT_PAL => &FONT_COLORS,
         SPARKLE_PAL => &SPARKLE_COLORS,
+        SHIMMER_1 => &SHIMMER_1_COLORS,
+        SHIMMER_2 => &SHIMMER_2_COLORS,
         _ => unreachable!("bad palette row {pal}"),
     }
 }
