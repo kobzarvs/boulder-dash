@@ -42,6 +42,7 @@ use boulder_dash::audio::slots;
 use boulder_dash::engine::{Cave, CaveStatus, Event, Input, START_RESERVE_LIVES};
 use boulder_dash::render::camera::{Camera, CELL_PX};
 use boulder_dash::render::rockford::RockfordAnim;
+use boulder_dash::render::slide::SlideTracker;
 use boulder_dash::render::Renderer;
 
 use crate::{Audio, SCREEN_W, TICK};
@@ -206,6 +207,7 @@ pub struct Flow {
     /// Cave index of the active session (engine exposes no accessor).
     cur_cave_idx: usize,
     rock: Option<RockfordAnim>,
+    slides: SlideTracker,
     cam: Camera,
     magic_active: bool,
     paused: bool,
@@ -237,6 +239,7 @@ impl Flow {
             caves: [None, None],
             cur_cave_idx: 0,
             rock: None,
+            slides: SlideTracker::default(),
             cam: Camera::new(),
             magic_active: false,
             paused: false,
@@ -535,6 +538,7 @@ impl Flow {
         if let Some(rock) = &mut self.rock {
             rock.update(&cave);
         }
+        self.slides.update(&cave, self.tick);
         let game_over = matches!(cave.status(), CaveStatus::GameOver);
         self.caves[self.active] = Some(cave);
 
@@ -546,6 +550,7 @@ impl Flow {
         if respawned {
             let cave = self.caves[self.active].as_ref().unwrap();
             self.rock = Some(RockfordAnim::new(cave));
+            self.slides.reset(cave);
             let (px, py) = self.rock.as_ref().unwrap().pos;
             self.cam.snap(px * CELL_PX, py * CELL_PX);
             self.magic_active = false;
@@ -643,6 +648,7 @@ impl Flow {
     fn enter_session(&mut self, audio: &mut Option<Audio>) {
         let cave = self.caves[self.active].as_ref().expect("session without cave");
         self.rock = Some(RockfordAnim::new(cave));
+        self.slides.reset(cave);
         let (px, py) = self.rock.as_ref().unwrap().pos;
         self.cam.snap(px * CELL_PX, py * CELL_PX);
         self.magic_active = false;
@@ -734,7 +740,7 @@ impl Flow {
         let cave = self.caves[self.active].as_ref().expect("render without cave");
         if let Some(rock) = &self.rock {
             let suit = self.players[self.active].color_idx;
-            renderer.draw_world(cave, self.cur_cave_idx, &self.cam, self.tick, self.magic_active, rock, suit);
+            renderer.draw_world(cave, self.cur_cave_idx, &self.cam, self.tick, self.magic_active, rock, &self.slides, suit);
         }
         // HUD bar: opaque over the top (covers viewport bleed), then contents.
         draw_rectangle(0.0, 0.0, SCREEN_W, 32.0, BLACK);

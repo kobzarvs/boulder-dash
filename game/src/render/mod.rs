@@ -22,6 +22,7 @@ pub mod camera;
 pub mod hud;
 pub mod nametable;
 pub mod rockford;
+pub mod slide;
 
 use macroquad::prelude::*;
 
@@ -162,7 +163,8 @@ impl Renderer {
 
     /// Cave field + Rockford's head overlay, clipped to the viewport under
     /// the HUD. `suit` is the player's color-table index (sprite palette 0
-    /// color 2, $3D in the ROM).
+    /// color 2, $3D in the ROM). Objects with an active slide in `slides`
+    /// are drawn at their interpolated position.
     #[allow(clippy::too_many_arguments)]
     pub fn draw_world(
         &self,
@@ -172,6 +174,7 @@ impl Renderer {
         frame: u64,
         magic_active: bool,
         rock: &RockfordAnim,
+        slides: &slide::SlideTracker,
         suit: usize,
     ) {
         let bank = world_bank(cave_idx);
@@ -182,11 +185,16 @@ impl Renderer {
         let y1 = ((cam.y + VIEW_H) / CELL_PX).ceil().min(HEIGHT as f32) as usize;
         for cy in y0..y1 {
             for cx in x0..x1 {
-                let sx = cx as f32 * CELL_PX - cam.x;
-                let sy = HUD_H + cy as f32 * CELL_PX - cam.y;
                 let cell = cave.cell_at(cx, cy);
+                let idx = cy * WIDTH + cx;
+                let (obj, px, py) = match slides.slide_for(idx, frame) {
+                    Some((obj, fx, fy)) => (obj, fx, fy),
+                    None => (cell.obj, cx as f32, cy as f32),
+                };
+                let sx = px * CELL_PX - cam.x;
+                let sy = HUD_H + py * CELL_PX - cam.y;
                 self.draw_cell(
-                    cell.obj,
+                    obj,
                     cave_idx,
                     bank,
                     sx,
