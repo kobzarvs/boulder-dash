@@ -80,6 +80,10 @@ impl SlideTracker {
                     continue;
                 }
                 if self.prev[src] == cur && cave.cell_at_idx(src).obj != cur {
+                    // The object keeps moving through `src`: drop the older
+                    // slide that was arriving there, or the same object would
+                    // be drawn twice (e.g. push then immediate fall).
+                    self.slides.retain(|s| s.to != src);
                     self.slides.push(Slide { obj: cur, from: src, to: idx, start: tick });
                     used_from[src] = true;
                     used_to[idx] = true;
@@ -143,8 +147,7 @@ mod tests {
 
     /// A firefly walking along a wall slides between cells.
     #[test]
-    fn walking_firefly_slides() {
-        // Rockford far away in the corner (default spawn is (1,1)).
+    fn walking_firefly_slides() {        // Rockford far away in the corner (default spawn is (1,1)).
         let cells = cells_from_ascii(&[
             "r   ",
             "    ",
@@ -172,5 +175,35 @@ mod tests {
             }
         }
         assert!(found, "no slide recorded for the walking firefly");
+    }
+
+    /// Push-then-immediate-fall: the engine moves the boulder twice in one
+    /// cycle (push, then the fall scan takes it further). The older slide
+    /// must be cancelled, or the boulder is drawn twice.
+    #[test]
+    fn chained_move_has_single_slide() {
+        // Rockford at (1,1), boulder at (3,1), space beyond, space below.
+        let cells = cells_from_ascii(&[
+            "r o   ",
+            "      ",
+            "      ",
+        ]);
+        let mut cave = Cave::from_cells(&cells, ascii_params(), 0, 1, 0);
+        let mut slides = SlideTracker::default();
+        slides.reset(&cave);
+        for tick in 0..16 {
+            let input = if tick == 0 {
+                Input { right: true, grab: true, ..Input::NONE }
+            } else {
+                Input::NONE
+            };
+            cave.tick(input);
+            slides.update(&cave, tick);
+            assert!(
+                slides.slides.len() <= 1,
+                "tick {tick}: {} overlapping slides for one boulder",
+                slides.slides.len()
+            );
+        }
     }
 }
