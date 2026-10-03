@@ -31,13 +31,13 @@ pub fn init_font() {
 /// Right edge of the HUD bar (screen is 640 px wide).
 const RIGHT: f32 = 636.0;
 
-/// Built-in-font size for UI text (75% of the first pass).
-pub const FONT_SIZE: f32 = 18.0;
+/// Built-in-font size for UI text (50% of the first pass).
+pub const FONT_SIZE: f32 = 12.0;
 /// Rasterization size; drawn at FONT_SIZE via font_scale, so glyphs are
-/// supersampled and stay smooth under camera/window zoom.
+/// supersampled ~4x and stay smooth under camera/window zoom.
 const RASTER_SIZE: u16 = 48;
 /// Baseline offset from a text row top.
-pub const BASELINE: f32 = 14.0;
+pub const BASELINE: f32 = 11.0;
 
 fn text_params(color: Color, size: f32) -> TextParams<'static> {
     TextParams {
@@ -110,7 +110,7 @@ pub fn draw_hud(
     } else {
         super::atlas::diamond_pal(frame)
     };
-    atlas.draw_quad(dquad, world_bank, dpal, 4.0, 8.0);
+    atlas.draw_quad(dquad, world_bank, dpal, 4.0, 2.0);
     let remaining = cave.diamonds_needed().saturating_sub(cave.diamonds_collected());
     draw_text(atlas, 32.0, 4.0, &format!("{remaining:02}"));
     draw_num(atlas, RIGHT, 4.0, cave.score(), 6);
@@ -119,6 +119,6 @@ pub fn draw_hud(
     draw_text(atlas, 4.0, 26.0, &format!("TIME {:03}", cave.time_units_remaining()));
     let label = format!("CAVE {} {}", (b'A' + cave_idx as u8) as char, level);
     draw_text(atlas, (640.0 - text_width(&label)) / 2.0, 26.0, &label);
-    let lives = format!("LIVES{}", cave.lives());
+    let lives = format!("LIVES {}", cave.lives());
     draw_text(atlas, RIGHT - text_width(&lives), 26.0, &lives);
 }
