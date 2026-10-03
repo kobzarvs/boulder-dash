@@ -5,10 +5,12 @@ pub const CELL_PX: f32 = 32.0;
 /// Cave pixel size: 40x22 cells.
 pub const CAVE_W: f32 = 40.0 * CELL_PX;
 pub const CAVE_H: f32 = 22.0 * CELL_PX;
-/// Visible cave viewport (below the 32 px HUD bar). The whole 640x352 cave
-/// fits at once — no scrolling needed.
+/// Visible cave viewport (below the 48 px HUD bar, to the 416 px screen
+/// bottom): 640x368 = 20x11.5 cells. The half-cell remainder means a
+/// partially-visible row is always present at the top or bottom edge;
+/// `draw_world` draws it and the HUD band / screen edge clip the bleed.
 pub const VIEW_W: f32 = 640.0;
-pub const VIEW_H: f32 = 352.0;
+pub const VIEW_H: f32 = 368.0;
 
 pub struct Camera {
     pub x: f32,
@@ -27,8 +29,8 @@ impl Camera {
     }
 
     /// Clamp on one axis; center the cave when the viewport is larger than it
-    /// (viewport is taller than the 352 px cave, so `y` goes negative there —
-    /// the draw code already handles negative camera as black margins).
+    /// (both cave axes exceed the viewport here, so this always clamps into
+    /// `0..=cave-view` in practice).
     fn clamp_axis(c: f32, cave: f32, view: f32) -> f32 {
         if view >= cave {
             (cave - view) / 2.0

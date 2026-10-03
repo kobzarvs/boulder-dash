@@ -1,4 +1,4 @@
-//! Top HUD bar (32 px, two cell rows): diamonds quota, score, time, cave id,
+//! Top HUD bar (48 px): diamonds quota, score, time, cave id,
 //! reserve lives. Text is drawn with macroquad's built-in font (the ROM font
 //! tiles are solid-background and proved unreadable at non-integer zoom).
 //!

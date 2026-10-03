@@ -39,6 +39,7 @@ pub mod screens;
 use macroquad::prelude::*;
 
 use boulder_dash::audio::slots;
+use boulder_dash::engine::ascii::{ascii_params, cells_from_ascii};
 use boulder_dash::engine::{Cave, CaveStatus, Event, Input, START_RESERVE_LIVES};
 use boulder_dash::render::camera::{Camera, CELL_PX};
 use boulder_dash::render::rockford::RockfordAnim;
@@ -751,7 +752,7 @@ impl Flow {
             }
         }
         // HUD bar: opaque over the top (covers viewport bleed), then contents.
-        draw_rectangle(0.0, 0.0, SCREEN_W, 32.0, BLACK);
+        draw_rectangle(0.0, 0.0, SCREEN_W, boulder_dash::render::hud::HUD_H, BLACK);
         let pl = &self.players[self.active];
         renderer.draw_hud(cave, self.cur_cave_idx, (pl.quest + 1) as u8, self.tick);
         let total = pl.total_score(Some(cave));
@@ -828,13 +829,46 @@ impl Flow {
         if std::env::var("BDFLASH").is_ok() {
             self.door_flash = 5;
         }
-        self.caves[0] = Some(Cave::new(cave_idx, level, 0));
+        // BDEMPTYCAVE: substitute a mostly-empty field (Rockford mid-cave, a
+        // few reference objects) for scroll/camera debugging.
+        self.caves[0] = Some(if std::env::var("BDEMPTYCAVE").is_ok() {
+            Cave::from_cells(&empty_test_cave(), ascii_params(), cave_idx, level, 0)
+        } else {
+            Cave::new(cave_idx, level, 0)
+        });
         self.active = 0;
         self.cur_cave_idx = cave_idx;
         let mut no_audio = None;
         self.enter_session(&mut no_audio);
         self.state = State::Playing { demo: None };
     }
+}
+
+/// BDEMPTYCAVE field: open space with a few reference objects, Rockford
+/// mid-cave (field row 10) so the camera can scroll the full vertical range.
+fn empty_test_cave() -> [u8; boulder_dash::engine::CELLS] {
+    cells_from_ascii(&[
+        "                                      ",
+        "                                      ",
+        "  *        *                   *      ",
+        "                                      ",
+        "     o                           o    ",
+        "                                      ",
+        "            ++++++                    ",
+        "                                      ",
+        "                                      ",
+        "                  r                   ",
+        "                                      ",
+        "                                      ",
+        "                    ++++++            ",
+        "                                      ",
+        "   o                            o     ",
+        "                                      ",
+        "                                      ",
+        "  *        *                  *       ",
+        "                                      ",
+        "                                      ",
+    ])
 }
 
 #[cfg(test)]
