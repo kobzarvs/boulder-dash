@@ -305,9 +305,10 @@ impl Renderer {
         hud::draw_hud(&self.atlas, cave, cave_idx, level, world_bank(cave_idx), frame);
     }
 
-    /// Full-frame white flash for the door-open effect (5 ticks, fading).
+    /// Full-frame white flash for the door-open effect (15 ticks: 10 at
+    /// full brightness, then a 5-tick fade).
     pub fn draw_door_flash(&self, frames_left: u8) {
-        let alpha = 0.85 * frames_left as f32 / 5.0;
+        let alpha = 0.85 * (frames_left.min(5) as f32) / 5.0;
         draw_rectangle(
             0.0,
             0.0,

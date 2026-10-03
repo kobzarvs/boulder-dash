@@ -528,7 +528,7 @@ impl Flow {
                         a.on_death(cause, self.tick);
                     }
                 }
-                Event::DoorOpened { .. } => self.door_flash = 5,
+                Event::DoorOpened { .. } => self.door_flash = 15,
                 Event::MagicWallActivated => self.magic_active = true,
                 Event::MagicWallExpired => self.magic_active = false,
                 Event::Sound(cue) => {
@@ -1010,5 +1010,30 @@ mod tests {
         let next = f.finish_cave(&mut none_audio());
         f.state = next;
         assert_eq!(f.state_name(), "ending");
+    }
+
+    /// End-to-end: collecting the quota fires the door-open white flash.
+    #[test]
+    fn door_open_triggers_flash() {
+        use boulder_dash::engine::ascii::{ascii_params, cells_from_ascii};
+        use boulder_dash::engine::Cave;
+        let cells = cells_from_ascii(&[
+            "r  ",
+            "*. ",
+            "*. ",
+            ".  ",
+        ]);
+        let mut f = Flow::new();
+        f.caves[0] = Some(Cave::from_cells(&cells, ascii_params(), 0, 1, 0));
+        f.cur_cave_idx = 0;
+        f.state = State::Playing { demo: None };
+        assert_eq!(f.door_flash, 0);
+        // Walk down onto two diamonds (quota 2 in ascii_params).
+        let mut seen = false;
+        for _ in 0..40 {
+            f.update(Pad { down: true, ..Default::default() }, &mut none_audio());
+            seen |= f.door_flash > 0;
+        }
+        assert!(seen, "door-open flash did not fire");
     }
 }
