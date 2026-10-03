@@ -224,8 +224,15 @@ impl Audio {
             rx,
             #[cfg(target_arch = "wasm32")]
             tx,
+            // wasm: pre-render only the small SFX inline at startup; big music
+            // tracks render lazily via set_music, so the title screen never
+            // stutters (and with music off by default they may never render).
             #[cfg(target_arch = "wasm32")]
-            pending: VecDeque::from(order),
+            pending: {
+                let mut p: VecDeque<usize> = SFX_SLOTS.into();
+                p.push_back(slots::JINGLE_CAVE_COMPLETE);
+                p
+            },
             sounds: HashMap::new(),
             want_music: None,
             now_playing: None,
@@ -304,6 +311,13 @@ impl Audio {
             return;
         }
         self.want_music = slot;
+        #[cfg(target_arch = "wasm32")]
+        if let Some(s) = slot {
+            if !self.sounds.contains_key(&s) && !self.pending.contains(&s) {
+                // Lazy music render on wasm: enqueue at the front.
+                self.pending.push_front(s);
+            }
+        }
         if self.now_playing != slot {
             if let Some(cur) = self.now_playing.take() {
                 if let Some(sound) = self.sounds.get(&cur) {
