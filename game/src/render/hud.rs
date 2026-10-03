@@ -8,6 +8,7 @@
 //! clock.
 
 use macroquad::prelude::*;
+use std::sync::OnceLock;
 
 use crate::data::tiles::METATILE_SEQS;
 use crate::engine::Cave;
@@ -15,6 +16,17 @@ use crate::engine::Cave;
 use super::atlas::Atlas;
 
 pub const HUD_H: f32 = 48.0;
+
+/// "Press Start 2P" (OFL, The Press Start 2P Project Authors) — the classic
+/// NES-style pixel font, bundled as bytes.
+static FONT: OnceLock<Font> = OnceLock::new();
+
+/// Load the bundled pixel font; call once at startup before any text drawing.
+pub fn init_font() {
+    let font = load_ttf_font_from_bytes(include_bytes!("../../assets/PressStart2P.ttf"))
+        .expect("bundled PressStart2P.ttf must load");
+    FONT.set(font).ok();
+}
 
 /// Right edge of the HUD bar (screen is 640 px wide).
 const RIGHT: f32 = 636.0;
@@ -27,10 +39,11 @@ const RASTER_SIZE: u16 = 48;
 /// Baseline offset from a text row top.
 pub const BASELINE: f32 = 17.0;
 
-fn text_params(color: Color) -> TextParams<'static> {
+fn text_params(color: Color, size: f32) -> TextParams<'static> {
     TextParams {
+        font: FONT.get(),
         font_size: RASTER_SIZE,
-        font_scale: FONT_SIZE / RASTER_SIZE as f32,
+        font_scale: size / RASTER_SIZE as f32,
         color,
         ..Default::default()
     }
@@ -45,17 +58,27 @@ pub fn font_tile(c: char) -> usize {
     }
 }
 
-/// Text width at FONT_SIZE with the built-in font.
+/// Text width at FONT_SIZE with the bundled font.
 pub fn text_width(text: &str) -> f32 {
-    measure_text(text, None, RASTER_SIZE, FONT_SIZE / RASTER_SIZE as f32).width
+    text_width_sized(text, FONT_SIZE)
 }
 
-/// Draw UI text with a 1px black outline using the built-in font.
+/// Text width at an arbitrary size.
+pub fn text_width_sized(text: &str, size: f32) -> f32 {
+    measure_text(text, FONT.get(), RASTER_SIZE, size / RASTER_SIZE as f32).width
+}
+
+/// Draw UI text with a 1px black outline using the bundled font.
 pub fn text_outlined(x: f32, y_baseline: f32, text: &str) {
+    text_outlined_sized(x, y_baseline, text, FONT_SIZE);
+}
+
+/// Same at an arbitrary size.
+pub fn text_outlined_sized(x: f32, y_baseline: f32, text: &str, size: f32) {
     for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
-        macroquad::prelude::draw_text_ex(text, x + dx, y_baseline + dy, text_params(BLACK));
+        macroquad::prelude::draw_text_ex(text, x + dx, y_baseline + dy, text_params(BLACK, size));
     }
-    macroquad::prelude::draw_text_ex(text, x, y_baseline, text_params(WHITE));
+    macroquad::prelude::draw_text_ex(text, x, y_baseline, text_params(WHITE, size));
 }
 
 pub fn draw_text(_atlas: &Atlas, x: f32, y: f32, text: &str) {
@@ -89,15 +112,13 @@ pub fn draw_hud(
     };
     atlas.draw_quad(dquad, world_bank, dpal, 4.0, 8.0);
     let remaining = cave.diamonds_needed().saturating_sub(cave.diamonds_collected());
-    draw_num(atlas, 84.0, 4.0, remaining, 2);
+    draw_text(atlas, 32.0, 4.0, &format!("{remaining:02}"));
     draw_num(atlas, RIGHT, 4.0, cave.score(), 6);
 
     // Row 1: time, cave letter + level, reserve lives.
-    draw_text(atlas, 4.0, 26.0, "TIME");
-    draw_num(atlas, 140.0, 26.0, cave.time_units_remaining(), 3);
-    let label = format!("CAVE {}", (b'A' + cave_idx as u8) as char);
-    draw_text(atlas, 256.0, 26.0, &label);
-    draw_num(atlas, 380.0, 26.0, level as u32, 1);
+    draw_text(atlas, 4.0, 26.0, &format!("TIME {:03}", cave.time_units_remaining()));
+    let label = format!("CAVE {} {}", (b'A' + cave_idx as u8) as char, level);
+    draw_text(atlas, (640.0 - text_width(&label)) / 2.0, 26.0, &label);
     let lives = format!("LIVES{}", cave.lives());
     draw_text(atlas, RIGHT - text_width(&lives), 26.0, &lives);
 }

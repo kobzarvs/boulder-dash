@@ -563,6 +563,7 @@ async fn main() {
         Camera2D::from_display_rect(Rect::new(-(lw - 256.0) / 2.0, 0.0, lw, 240.0));
     screens_cam.render_target = Some(rt.clone());
 
+    boulder_dash::render::hud::init_font();
     let renderer = Renderer::new();
 
     // Headless flow-screen shot: BDSHOT_FLOW=<screen> with BDSHOT supplying

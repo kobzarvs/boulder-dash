@@ -188,6 +188,11 @@ impl RockfordAnim {
         self.step < 8
     }
 
+    /// Alive (not in the death arc and not gone).
+    pub fn alive(&self) -> bool {
+        self.dead_ticks == 0
+    }
+
     /// Head metasprite to draw this tick (frame-select formulas match the
     /// ROM's $FE-based indexes), or `None` once the death arc has played out.
     pub fn head_frame(&self, tick: u64) -> Option<&'static HeadFrame> {

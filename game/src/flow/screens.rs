@@ -34,17 +34,23 @@ const PAL_SPR_DIGITS: usize = 26;
 /// World names in ROM order ($E909 caption scripts).
 pub const WORLD_NAMES: [&str; 6] = ["BOULDER", "ICE", "SAND", "OCEAN", "RELIC", "VOLCANO"];
 
-/// Overlay text via the built-in font (black-outlined, any background).
+/// Flow-screen overlay text size (the 256x240 logical screens take half the
+/// HUD size).
+const SCREEN_FONT_SIZE: f32 = 12.0;
+/// Baseline offset for the flow overlay text.
+const SCREEN_BASELINE: f32 = 9.0;
+
+/// Overlay text via the bundled pixel font (black-outlined, any background).
 fn draw_text(atlas: &Atlas, x: f32, y: f32, text: &str) {
     let _ = atlas;
-    boulder_dash::render::hud::text_outlined(x, y + boulder_dash::render::hud::BASELINE, text);
+    boulder_dash::render::hud::text_outlined_sized(x, y + SCREEN_BASELINE, text, SCREEN_FONT_SIZE);
 }
 
 /// Centered 1x text line.
 fn text_c(atlas: &Atlas, y: f32, text: &str) {
     let _ = atlas;
-    let x = (W - boulder_dash::render::hud::text_width(text)) / 2.0;
-    boulder_dash::render::hud::text_outlined(x, y + boulder_dash::render::hud::BASELINE, text);
+    let x = (W - boulder_dash::render::hud::text_width_sized(text, SCREEN_FONT_SIZE)) / 2.0;
+    boulder_dash::render::hud::text_outlined_sized(x, y + SCREEN_BASELINE, text, SCREEN_FONT_SIZE);
 }
 
 fn blink(tick: u64) -> bool {

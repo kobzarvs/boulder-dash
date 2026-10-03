@@ -154,15 +154,12 @@ impl Renderer {
             }
             Obj::Amoeba | Obj::DeadAmoeba => (self.quad_of(Obj::Amoeba), atlas::world_pal(var, attr)),
             Obj::Rockford => {
-                // Body = background metatile 15 (quad $F44F), BG palette 0.
-                // The original animates it via the CHR1 bank swap
-                // ($6F = ($FE&$18)>>3): banks 0-3 hold the 4 walk frames.
-                // This applies to every cave — bank 6's tiles $36-$39 are
-                // unrelated worlds-5/6 art, so the body never comes from
-                // the cave's `bank` when that is 6.
-                let bbank = ((frame / 8) % 4) as usize;
-                self.atlas.draw_quad_scaled(ROCKFORD_BODY_QUAD, bbank, atlas::world_pal(var, 0), x, y, CELL_PX / 16.0);
-                return;
+                // Rockford is drawn AFTER the cell loop (body + head together
+                // at his fractional slide position); leave clean space here.
+                (
+                    self.seq_quad(Obj::Space, var),
+                    atlas::world_pal(var, METATILE_ATTRS[Obj::Space as usize] as usize),
+                )
             }
         };
         self.atlas.draw_quad_scaled(quad, bank, pal, x, y, CELL_PX / 16.0);
@@ -206,9 +203,25 @@ impl Renderer {
             }
         }
         if let Some(head) = rock.head_frame(frame) {
+            // Body + head TOGETHER at the fractional slide position (the NES
+            // had to jump the background body cell-wise; we don't).
             let sx = rock.pos.0 * CELL_PX - cam.x;
             let sy = HUD_H + rock.pos.1 * CELL_PX - cam.y;
-            self.rockford_art.draw_head(head, suit, sx, sy, CELL_PX / 16.0);
+            let scale = CELL_PX / 16.0;
+            if rock.alive() {
+                // Body = background metatile 15 (quad $F44F), world palette 0,
+                // animated via the CHR1 bank swap frames (banks 0-3).
+                let bbank = ((frame / 8) % 4) as usize;
+                self.atlas.draw_quad_scaled(
+                    ROCKFORD_BODY_QUAD,
+                    bbank,
+                    atlas::world_pal(variant(cave_idx), 0),
+                    sx,
+                    sy,
+                    scale,
+                );
+            }
+            self.rockford_art.draw_head(head, suit, sx, sy, scale);
         }
     }
 
