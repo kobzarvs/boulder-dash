@@ -6,7 +6,8 @@
 //! demo); see `flow/mod.rs` for the mapping to the ROM's 19-state dispatch.
 //! The engine runs at exactly 60 ticks/s via an accumulator over
 //! `get_frame_time()`; rendering happens once per window frame into a
-//! 256x240 render target (nearest-neighbor, integer-scaled letterbox blit).
+//! full-physical-resolution render target (pixel-art tiles stay blocky via
+//! nearest-neighbor, HD sprites rasterize 1:1), then a letterbox blit.
 //!
 //! Audio: all needed sound-driver slots (title/menu/map themes, world themes
 //! plus hurry variants, cave-complete jingle, screen jingles, SFX) are
@@ -522,10 +523,11 @@ fn window_conf() -> Conf {
     }
 }
 
-/// Blit the 512x480 render target to the window, aspect-preserving fit.
+/// Blit the render target to the window, aspect-preserving fit.
 /// Size comes from miniquad's real drawable (physical px / dpi = logical,
 /// matching the default projection) — immune to macroquad's stale
-/// `screen_width()` on Retina startup.
+/// `screen_width()` on Retina startup. The target itself is full physical
+/// resolution, so the mapping is ~1:1 at the default window size.
 fn blit(rt: &RenderTarget) {
     set_default_camera();
     clear_background(BLACK);
@@ -570,17 +572,23 @@ fn render_frame(
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let rt = render_target(SCREEN_W as u32, SCREEN_H as u32);
-    {
-        let (pw, ph) = macroquad::miniquad::window::screen_size();
-        eprintln!(
-            "boulder-dash: framebuffer {pw}x{ph}, dpi_scale {}, screen {}x{}",
-            macroquad::miniquad::window::dpi_scale(),
-            screen_width(),
-            screen_height()
-        );
-    }
-    rt.texture.set_filter(FilterMode::Nearest);
+    // Render the world at the window's FULL PHYSICAL resolution (Retina
+    // framebuffer), not the 640x416 logical one: pixel-art tiles keep their
+    // crisp nearest-neighbor blocks either way, but HD sprites (boulders)
+    // rasterize 1:1 against their 128px source instead of being quantized
+    // to 32 logical px and then block-doubled by the blit. Recreated on
+    // window resize in the main loop below.
+    let (pw, ph) = macroquad::miniquad::window::screen_size();
+    eprintln!(
+        "boulder-dash: framebuffer {pw}x{ph}, dpi_scale {}, screen {}x{}",
+        macroquad::miniquad::window::dpi_scale(),
+        screen_width(),
+        screen_height()
+    );
+    let mut rt = render_target(pw as u32, ph as u32);
+    // Final blit is ~1:1 physical: Linear keeps HD sprites smooth; the
+    // pixel art's blocks are already baked into the target at this point.
+    rt.texture.set_filter(FilterMode::Linear);
 
     let mut game_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, SCREEN_W, SCREEN_H));
     game_cam.render_target = Some(rt.clone());
@@ -663,6 +671,16 @@ async fn main() {
     let mut acc = 0.0f32;
 
     loop {
+        // Keep the render target at full physical resolution across resizes
+        // (fullscreen toggle, window drag): one frame of stretch, then crisp.
+        let (pw, ph) = macroquad::miniquad::window::screen_size();
+        if (pw as u32, ph as u32) != (rt.texture.width() as u32, rt.texture.height() as u32) {
+            rt = render_target(pw as u32, ph as u32);
+            rt.texture.set_filter(FilterMode::Linear);
+            game_cam.render_target = Some(rt.clone());
+            screens_cam.render_target = Some(rt.clone());
+        }
+
         let pad = read_pad();
         let shift = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
 
