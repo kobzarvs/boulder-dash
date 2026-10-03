@@ -43,10 +43,9 @@ struct Amoeba {
     found_empty: bool,
     /// Chunk counter within the current pass (0..4).
     phase: u8,
-    /// Spiral cursor ($BB/$BC), persists across chunks within a pass.
-    cursor: usize,
-    /// Spiral direction state ($4E).
-    dir: Direction,
+    /// Boundary-scan position: probes walk amoeba neighbors in field order,
+    /// persisting across chunks (the ROM's spiral cursor equivalent).
+    scan: usize,
     /// Seed cell ($B8/$B9): first amoeba found by the bottom-up load scan.
     seed: usize,
     /// Growth pacing ($BA): interval between growths, shrinks by 4 per growth.
@@ -174,8 +173,7 @@ impl Cave {
                 enclosed: false,
                 found_empty: false,
                 phase: 0,
-                cursor: 0,
-                dir: Direction::Up,
+                scan: 0,
                 seed: 0,
                 interval: AMOEBA_INTERVAL_START,
                 countdown: AMOEBA_INTERVAL_START,
@@ -208,9 +206,8 @@ impl Cave {
                     self.amoeba.enclosed = false;
                     self.amoeba.found_empty = false;
                     self.amoeba.phase = 0;
-                    self.amoeba.cursor = i;
+                    self.amoeba.scan = i;
                     self.amoeba.seed = i;
-                    self.amoeba.dir = Direction::Up;
                     self.amoeba.interval = AMOEBA_INTERVAL_START;
                     self.amoeba.countdown = AMOEBA_INTERVAL_START;
                     return;
@@ -616,67 +613,69 @@ impl Cave {
 
     // ---- amoeba -----------------------------------------------------------------
 
-    /// One 25-probe spiral chunk ($CE57), run once per 8 frames. Growth is
-    /// deterministic: every `countdown`-th growable probe grows one cell, then
-    /// the interval shrinks by 4 (accelerates). Growable = space OR mud
-    /// ($CF91 probes $00 and $20 alike — the amoeba eats dirt). A full
-    /// 4-chunk pass with no growable probe marks the amoeba enclosed ->
-    /// cleanup turns it to diamonds. (No overgrowth-to-boulders threshold
-    /// exists in the NES ROM.)
+    /// One 25-probe chunk ($CE57), run once per 8 frames. Each probe is the
+    /// next amoeba-neighbor growable cell (space or mud — $CF91 passes $00
+    /// and $20 alike, the amoeba eats dirt), found by scanning the field in
+    /// a persistent position cursor. Every `countdown`-th growable probe
+    /// grows one cell, then the interval shrinks by 4 (accelerates); at most
+    /// one growth per chunk. A full 4-chunk pass with no growable probe
+    /// marks the amoeba enclosed -> cleanup turns it to diamonds. (No
+    /// overgrowth-to-boulders threshold exists in the NES ROM.)
     fn amoeba_chunk(&mut self, ev: &mut Vec<Event>) {
         if !self.amoeba.active || self.amoeba.enclosed {
             return;
         }
         for _ in 0..AMOEBA_PROBES_PER_CHUNK {
-            let ahead = self.field.neighbor(self.amoeba.cursor, self.amoeba.dir);
-            let Some(ahead) = ahead else {
-                // Off-field: step back, try next direction.
-                self.amoeba.dir = self.amoeba.dir.ccw();
-                continue;
+            // Advance the scan to the next growable boundary probe.
+            let Some((probe_at, grow_at)) = self.amoeba_next_probe() else {
+                // No growable probe left anywhere: nothing more this pass.
+                break;
             };
-            match self.field.cells[ahead].obj {
-                Obj::Amoeba => {
-                    // Move onto the amoeba cell and turn CW.
-                    self.amoeba.cursor = ahead;
-                    self.amoeba.dir = self.amoeba.dir.cw();
-                }
-                // $CF91: the probe treats $00 (space) AND $20 (mud) as
-                // growable — the amoeba eats dirt.
-                Obj::Space | Obj::Mud => {
-                    self.amoeba.found_empty = true;
-                    self.amoeba.countdown = self.amoeba.countdown.wrapping_sub(1);
-                    if self.amoeba.countdown == 0 {
-                        self.field.cells[ahead] = Cell::new(Obj::Amoeba);
-                        self.amoeba.interval =
-                            self.amoeba.interval.wrapping_sub(AMOEBA_INTERVAL_STEP);
-                        self.amoeba.countdown = self.amoeba.interval;
-                        ev.push(Event::AmoebaGrew { at: ahead });
-                        // At most one new cell per chunk.
-                        break;
-                    }
-                    // Step back, try next direction.
-                    self.amoeba.dir = self.amoeba.dir.ccw();
-                }
-                _ => {
-                    // Obstacle: step back, try next direction.
-                    self.amoeba.dir = self.amoeba.dir.ccw();
-                }
+            self.amoeba.scan = probe_at;
+            let _ = grow_at;
+            self.amoeba.found_empty = true;
+            self.amoeba.countdown = self.amoeba.countdown.wrapping_sub(1);
+            if self.amoeba.countdown == 0 {
+                self.field.cells[grow_at] = Cell::new(Obj::Amoeba);
+                self.amoeba.interval = self.amoeba.interval.wrapping_sub(AMOEBA_INTERVAL_STEP);
+                self.amoeba.countdown = self.amoeba.interval;
+                ev.push(Event::AmoebaGrew { at: grow_at });
+                break;
             }
         }
         self.amoeba.phase += 1;
         if self.amoeba.phase == AMOEBA_CHUNKS_PER_PASS {
             self.amoeba.phase = 0;
             if self.amoeba.found_empty {
+                // Growable cells remain: restart the pass from the seed.
                 self.amoeba.found_empty = false;
-                // Restart the pass from the seed cell.
-                self.amoeba.cursor = self.amoeba.seed;
-                self.amoeba.dir = Direction::Up;
+                self.amoeba.scan = self.amoeba.seed;
             } else {
                 self.amoeba.enclosed = true;
                 ev.push(Event::AmoebaConverted { to_diamonds: true });
                 ev.push(Event::Sound(SoundCue::Amoeba));
             }
         }
+    }
+
+    /// Find the next (amoeba cell, growable neighbor) probe after the scan
+    /// cursor, in field order. Returns (amoeba cell, growable cell); the
+    /// cursor stops on the amoeba cell. None if no growable boundary exists.
+    fn amoeba_next_probe(&self) -> Option<(usize, usize)> {
+        for step in 1..=CELLS {
+            let i = (self.amoeba.scan + step) % CELLS;
+            if self.field.cells[i].obj != Obj::Amoeba {
+                continue;
+            }
+            for dir in [Direction::Up, Direction::Left, Direction::Down, Direction::Right] {
+                if let Some(n) = self.field.neighbor(i, dir) {
+                    if matches!(self.field.cells[n].obj, Obj::Space | Obj::Mud) {
+                        return Some((i, n));
+                    }
+                }
+            }
+        }
+        None
     }
 
     // ---- Rockford -----------------------------------------------------------------

@@ -612,3 +612,48 @@ fn amoeba_in_mud_survives_and_eats_dirt() {
     }
     assert!(grew, "amoeba never grew into mud");
 }
+
+#[test]
+fn amoeba_cave6_diag() {
+    if std::env::var("BDDBG").is_err() {
+        return;
+    }
+    let mut cave = Cave::new(6, 1, 0);
+    for tick in 0..(60 * 30) {
+        let evs = cave.tick(Input::NONE);
+        if tick % 240 == 0 {
+            eprintln!(
+                "tick {tick}: amoeba cells={} interval={}",
+                cave.count_obj(Obj::Amoeba),
+                cave.amoeba_probe_interval()
+            );
+        }
+        if evs.iter().any(|e| matches!(e, Event::AmoebaGrew { .. })) && tick % 240 != 0 {
+            // print first growths sparsely
+            if tick % 60 == 0 {
+                eprintln!("tick {tick}: grew");
+            }
+        }
+        if evs.contains(&Event::AmoebaConverted { to_diamonds: true }) {
+            eprintln!("tick {tick}: CONVERTED, amoeba cells left={}", cave.count_obj(Obj::Amoeba));
+            for i in 0..crate::engine::CELLS {
+                // replay: amoeba already converted; print what surrounded each amoeba cell
+            }
+            break;
+        }
+        if tick == 1054 {
+            use crate::engine::{WIDTH, HEIGHT};
+            for y in 1..HEIGHT - 1 {
+                for x in 1..WIDTH - 1 {
+                    let i = y * WIDTH + x;
+                    if cave.cell_at_idx(i).obj == Obj::Amoeba {
+                        let nb = |dx: i32, dy: i32| cave.cell_at((x as i32 + dx) as usize, (y as i32 + dy) as usize).obj;
+                        eprintln!("amoeba ({x},{y}): L={:?} R={:?} U={:?} D={:?}",
+                            nb(-1, 0), nb(1, 0), nb(0, -1), nb(0, 1));
+                    }
+                }
+            }
+        }
+    }
+    eprintln!("final: amoeba={} diamonds={}", cave.count_obj(Obj::Amoeba), cave.count_obj(Obj::Diamond));
+}
