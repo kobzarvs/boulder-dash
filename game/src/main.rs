@@ -557,6 +557,15 @@ fn render_frame(
 #[macroquad::main(window_conf)]
 async fn main() {
     let rt = render_target(SCREEN_W as u32, SCREEN_H as u32);
+    {
+        let (pw, ph) = macroquad::miniquad::window::screen_size();
+        eprintln!(
+            "boulder-dash: framebuffer {pw}x{ph}, dpi_scale {}, screen {}x{}",
+            macroquad::miniquad::window::dpi_scale(),
+            screen_width(),
+            screen_height()
+        );
+    }
     rt.texture.set_filter(FilterMode::Nearest);
 
     let mut game_cam = Camera2D::from_display_rect(Rect::new(0.0, 0.0, SCREEN_W, SCREEN_H));

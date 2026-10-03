@@ -6,7 +6,13 @@
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #000; }
   body { display: flex; align-items: center; justify-content: center; }
-  canvas { image-rendering: pixelated; outline: none; }
+  canvas {
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    image-rendering: pixelated;
+    outline: none;
+  }
 </style>
 </head>
 <body>
