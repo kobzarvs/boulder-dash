@@ -100,9 +100,52 @@ impl Renderer {
         door_open: bool,
         magic_active: bool,
     ) {
+        let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
+        self.atlas.draw_quad_scaled(quad, bank, pal, x, y, CELL_PX / 16.0);
+    }
+
+    /// Same quad/palette selection as `draw_cell`, but drawn with a
+    /// TRANSPARENT background — for objects sliding between cells, whose
+    /// opaque backdrop pixels would otherwise erase the cells they pass over.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_cell_sliding(
+        &self,
+        obj: Obj,
+        cave_idx: usize,
+        bank: usize,
+        x: f32,
+        y: f32,
+        frame: u64,
+        door_open: bool,
+        magic_active: bool,
+    ) {
+        let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
+        let scale = CELL_PX / 16.0;
+        draw_texture_ex(
+            &self.atlas.quad_texture(quad, bank, pal),
+            x,
+            y,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(16.0 * scale, 16.0 * scale)),
+                ..Default::default()
+            },
+        );
+    }
+
+    /// The metatile quad + palette row for a cell object (per world variant,
+    /// animations and flash effects; see the ROM's $F453 attribute table).
+    fn cell_quad_pal(
+        &self,
+        obj: Obj,
+        cave_idx: usize,
+        frame: u64,
+        door_open: bool,
+        magic_active: bool,
+    ) -> ([u8; 4], usize) {
         let var = variant(cave_idx);
         let attr = METATILE_ATTRS[obj as usize] as usize;
-        let (quad, pal): ([u8; 4], usize) = match obj {
+        match obj {
             Obj::Space | Obj::Vacated | Obj::Mud | Obj::Steel | Obj::Brick | Obj::Boulder => {
                 (self.seq_quad(obj, var), atlas::world_pal(var, attr))
             }
@@ -157,8 +200,7 @@ impl Renderer {
                     atlas::world_pal(var, METATILE_ATTRS[Obj::Space as usize] as usize),
                 )
             }
-        };
-        self.atlas.draw_quad_scaled(quad, bank, pal, x, y, CELL_PX / 16.0);
+        }
     }
 
     /// Cave field + Rockford's head overlay, clipped to the viewport under
@@ -187,22 +229,34 @@ impl Renderer {
             for cx in x0..x1 {
                 let cell = cave.cell_at(cx, cy);
                 let idx = cy * WIDTH + cx;
-                let (obj, px, py) = match slides.slide_for(idx, frame) {
-                    Some((obj, fx, fy)) => (obj, fx, fy),
-                    None => (cell.obj, cx as f32, cy as f32),
-                };
-                let sx = px * CELL_PX - cam.x;
-                let sy = HUD_H + py * CELL_PX - cam.y;
-                self.draw_cell(
-                    obj,
-                    cave_idx,
-                    bank,
-                    sx,
-                    sy,
-                    frame,
-                    door_open,
-                    magic_active,
-                );
+                let sx_c = cx as f32 * CELL_PX - cam.x;
+                let sy_c = HUD_H + cy as f32 * CELL_PX - cam.y;
+                match slides.slide_for(idx, frame) {
+                    Some((obj, fx, fy)) => {
+                        let sx = fx * CELL_PX - cam.x;
+                        let sy = HUD_H + fy * CELL_PX - cam.y;
+                        self.draw_cell_sliding(
+                            obj,
+                            cave_idx,
+                            bank,
+                            sx,
+                            sy,
+                            frame,
+                            door_open,
+                            magic_active,
+                        );
+                    }
+                    None => self.draw_cell(
+                        cell.obj,
+                        cave_idx,
+                        bank,
+                        sx_c,
+                        sy_c,
+                        frame,
+                        door_open,
+                        magic_active,
+                    ),
+                }
             }
         }
         if let Some(head) = rock.head_frame(frame) {
@@ -214,14 +268,22 @@ impl Renderer {
             if rock.alive() {
                 // Body = background metatile 15 (quad $F44F), world palette 0,
                 // animated via the CHR1 bank swap frames (banks 0-3).
+                // Transparent background: it slides over other cells.
                 let bbank = ((frame / 8) % 4) as usize;
-                self.atlas.draw_quad_scaled(
-                    ROCKFORD_BODY_QUAD,
-                    bbank,
-                    atlas::world_pal(variant(cave_idx), 0),
+                let scale = CELL_PX / 16.0;
+                draw_texture_ex(
+                    &self.atlas.quad_texture(
+                        ROCKFORD_BODY_QUAD,
+                        bbank,
+                        atlas::world_pal(variant(cave_idx), 0),
+                    ),
                     sx,
                     sy,
-                    scale,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(16.0 * scale, 16.0 * scale)),
+                        ..Default::default()
+                    },
                 );
             }
             self.rockford_art.draw_head(head, suit, sx, sy, scale);
