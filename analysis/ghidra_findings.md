@@ -665,3 +665,6 @@ color select, password, status and game-over screens (states 2/3/8/14 draw recor
 
 Extracted data lands in game/src/data/screens.rs (records, streams, scripts, palettes,
 composited nametables, `decode_stream`/`decode_script`); PNG previews in game/assets/screens/.
+
+## ERRATUM (Q5)
+The amoeba probe at $CF91 checks three cell values: $D0 (amoeba), $00 (space) AND $20 (MUD in high-nibble encoding) — both $00 and $20 take the growable path. The amoeba eats dirt (like C64); "empty" in the Q5 text should read "space or mud". Found via the cave-6 bug: a mud-surrounded amoeba must survive, not convert to a diamond.

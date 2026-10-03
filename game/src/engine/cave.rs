@@ -617,10 +617,12 @@ impl Cave {
     // ---- amoeba -----------------------------------------------------------------
 
     /// One 25-probe spiral chunk ($CE57), run once per 8 frames. Growth is
-    /// deterministic: every `countdown`-th empty probe grows one cell, then
-    /// the interval shrinks by 4 (accelerates). A full 4-chunk pass with no
-    /// empty probe marks the amoeba enclosed -> cleanup turns it to diamonds.
-    /// (No overgrowth-to-boulders threshold exists in the NES ROM.)
+    /// deterministic: every `countdown`-th growable probe grows one cell, then
+    /// the interval shrinks by 4 (accelerates). Growable = space OR mud
+    /// ($CF91 probes $00 and $20 alike — the amoeba eats dirt). A full
+    /// 4-chunk pass with no growable probe marks the amoeba enclosed ->
+    /// cleanup turns it to diamonds. (No overgrowth-to-boulders threshold
+    /// exists in the NES ROM.)
     fn amoeba_chunk(&mut self, ev: &mut Vec<Event>) {
         if !self.amoeba.active || self.amoeba.enclosed {
             return;
@@ -638,7 +640,9 @@ impl Cave {
                     self.amoeba.cursor = ahead;
                     self.amoeba.dir = self.amoeba.dir.cw();
                 }
-                Obj::Space => {
+                // $CF91: the probe treats $00 (space) AND $20 (mud) as
+                // growable — the amoeba eats dirt.
+                Obj::Space | Obj::Mud => {
                     self.amoeba.found_empty = true;
                     self.amoeba.countdown = self.amoeba.countdown.wrapping_sub(1);
                     if self.amoeba.countdown == 0 {

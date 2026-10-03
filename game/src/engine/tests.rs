@@ -586,3 +586,29 @@ fn caves_load_from_emoji_files() {
         assert_eq!(cave_ids(i), parsed, "cave {i} must load from its emoji file");
     }
 }
+
+/// Regression (cave 6 bug): an amoeba embedded in MUD is NOT enclosed — the
+/// ROM's probe ($CF91) treats mud ($20) as growable just like space ($00).
+/// It must survive and eat dirt instead of converting to a diamond.
+#[test]
+fn amoeba_in_mud_survives_and_eats_dirt() {
+    let mut cave = ascii_cave(&["...", ".a.", "..."], ascii_params());
+    for _ in 0..64 {
+        assert!(!cave
+            .tick(Input::NONE)
+            .contains(&Event::AmoebaConverted { to_diamonds: true }));
+    }
+    assert!(
+        cave.count_obj(Obj::Amoeba) >= 1,
+        "mud-surrounded amoeba must not convert to diamonds"
+    );
+    // Keep ticking: it should eventually eat a mud cell (grow).
+    let mut grew = false;
+    for _ in 0..60 * 8 {
+        grew |= cave
+            .tick(Input::NONE)
+            .iter()
+            .any(|e| matches!(e, Event::AmoebaGrew { .. }));
+    }
+    assert!(grew, "amoeba never grew into mud");
+}
