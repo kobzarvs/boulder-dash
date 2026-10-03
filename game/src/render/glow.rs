@@ -97,9 +97,7 @@ impl DiamondGlow {
     /// Intensity breathes with the 120-tick sparkle loop.
     pub fn draw(&self, tick: u64, cx: f32, cy: f32, cell: f32) {
         let pulse = (tick as f32 * std::f32::consts::TAU / 120.0).sin();
-        let pulse = (tick as f32 * std::f32::consts::TAU / 120.0).sin();
-        let pulse = (tick as f32 * std::f32::consts::TAU / 120.0).sin();
-        let intensity = 0.80 + 0.10 * pulse;
+        let intensity = 0.40 + 0.05 * pulse;
         let size = cell * GLOW_CELLS;
         draw_texture_ex(
             &self.tex,

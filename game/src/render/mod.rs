@@ -22,11 +22,13 @@
 //!   his head is a 2-sprite 16x8 overlay (see `rockford` module).
 
 pub mod atlas;
+pub mod backdrop;
 pub mod boulder;
 pub mod camera;
 pub mod diamond;
 pub mod glow;
 pub mod hud;
+pub mod mud;
 pub mod nametable;
 pub mod rockford;
 pub mod shadow;
@@ -40,11 +42,13 @@ use crate::data::tiles::{METATILE_ATTRS, METATILE_SEQS};
 use crate::engine::{Cave, Obj, HEIGHT, WIDTH};
 
 use atlas::Atlas;
+use backdrop::BackdropArt;
 use boulder::BoulderArt;
 use camera::{Camera, CELL_PX, VIEW_H, VIEW_W};
 use diamond::DiamondArt;
 use glow::DiamondGlow;
 use hud::HUD_H;
+use mud::MudArt;
 use nametable::Screens;
 use rockford::{RockfordAnim, RockfordArt};
 use shadow::WallShadow;
@@ -60,6 +64,11 @@ pub struct Renderer {
     wall_art: WallArt,
     wall_shadow: WallShadow,
     diamond_glow: DiamondGlow,
+    backdrop_art: BackdropArt,
+    mud_art: MudArt,
+    /// Current dirt panorama style (F cycles; Cell so the main loop can
+    /// switch it through the shared &Renderer).
+    pub mud_variant: std::cell::Cell<usize>,
 }
 
 /// CHR bank holding the cave's world art: banks 0-3 for worlds 1-4,
@@ -75,18 +84,30 @@ fn variant(cave_idx: usize) -> usize {
 }
 
 /// Wall-contact shadow flags for a cell: walls cast onto their right and
-/// bottom neighbors (the light is upper-left), so a cell shaded from the
-/// left and/or top. A diagonal wall with no edge walls gives a corner
-/// touch on both sides. Walls themselves cast but never receive.
-fn wall_shadow_sides(cave: &Cave, cx: usize, cy: usize) -> (bool, bool) {
-    let wall = |x: usize, y: usize| matches!(cave.cell_at(x, y).obj, Obj::Steel | Obj::Brick);
-    if wall(cx, cy) {
-        return (false, false);
+/// bottom neighbors (the light is upper-left). Dirt casts too, but only
+/// onto the LOWER backdrop layer (non-mud cells): the soil edge reads as
+/// a raised bank shading the ground behind it, while dirt-on-dirt stays
+/// even. Walls themselves cast but never receive.
+/// Returns (left edge shaded, top edge shaded, diagonal corner touch).
+fn wall_shadow_sides(cave: &Cave, cx: usize, cy: usize) -> (bool, bool, bool) {
+    let this = cave.cell_at(cx, cy).obj;
+    if matches!(this, Obj::Steel | Obj::Brick) {
+        return (false, false, false);
     }
-    let left = cx > 0 && wall(cx - 1, cy);
-    let top = cy > 0 && wall(cx, cy - 1);
-    let diag = !left && !top && cx > 0 && cy > 0 && wall(cx - 1, cy - 1);
-    (left || diag, top || diag)
+    let onto_mud = this == Obj::Mud;
+    let casts = |obj: Obj| matches!(obj, Obj::Steel | Obj::Brick) || (obj == Obj::Mud && !onto_mud);
+    let left = cx > 0 && casts(cave.cell_at(cx - 1, cy).obj);
+    let top = cy > 0 && casts(cave.cell_at(cx, cy - 1).obj);
+    let diag = !left && !top && cx > 0 && cy > 0 && casts(cave.cell_at(cx - 1, cy - 1).obj);
+    (left, top, diag)
+}
+
+/// Smooth spatial modulation of the shadow strength (0.7..1.0): breaks
+/// the ruler-straight uniformity of long wall-edge shadow bands without
+/// salt-and-pepper noise (the field is continuous between cells).
+fn shadow_variation(cx: usize, cy: usize) -> f32 {
+    let n = (cx as f32 * 1.31 + cy as f32 * 2.17).sin() * (cx as f32 * 2.73 - cy as f32 * 0.77).cos();
+    0.85 + 0.15 * n
 }
 
 impl Default for Renderer {
@@ -106,7 +127,16 @@ impl Renderer {
             wall_art: WallArt::new(),
             wall_shadow: WallShadow::new(),
             diamond_glow: DiamondGlow::new(),
+            backdrop_art: BackdropArt::new(),
+            mud_art: MudArt::new(),
+            mud_variant: std::cell::Cell::new(0),
         }
+    }
+
+    /// Next dirt panorama style (F key).
+    pub fn cycle_mud(&self) {
+        self.mud_variant
+            .set((self.mud_variant.get() + 1) % mud::MUD_VARIANTS);
     }
 
     /// Rockford head-sprite sheet (columns = head tiles, rows = suit colors).
@@ -147,12 +177,12 @@ impl Renderer {
         magic_active: bool,
     ) {
         if obj == Obj::Boulder {
-            self.draw_backdrop(backdrop, cave_idx, bank, x, y, frame, door_open, magic_active);
+            self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             self.boulder_art.draw(cell_idx, spin, x, y, CELL_PX);
             return;
         }
         if obj == Obj::Diamond || obj == Obj::PendingDiamond {
-            self.draw_backdrop(backdrop, cave_idx, bank, x, y, frame, door_open, magic_active);
+            self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             self.diamond_art.draw(frame, x, y, CELL_PX);
             return;
         }
@@ -164,14 +194,26 @@ impl Renderer {
             self.wall_art.draw_brick(cell_idx, x, y, CELL_PX);
             return;
         }
+        if obj == Obj::Space || obj == Obj::Vacated {
+            self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Mud {
+            self.mud_art.draw(self.mud_variant.get(), cell_idx, x, y, CELL_PX);
+            return;
+        }
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
         self.atlas.draw_quad_scaled(quad, bank, pal, x, y, CELL_PX / 16.0);
     }
 
-    /// The backdrop quad (Mud/Space of this world's variant), drawn under
-    /// HD item sprites.
+    /// The backdrop drawn under HD item sprites: the cave's rock texture
+    /// (or the given object's quad for non-Space backdrops).
     #[allow(clippy::too_many_arguments)]
-    fn draw_backdrop(&self, obj: Obj, cave_idx: usize, bank: usize, x: f32, y: f32, frame: u64, door_open: bool, magic_active: bool) {
+    fn draw_backdrop(&self, obj: Obj, cell_idx: usize, cave_idx: usize, bank: usize, x: f32, y: f32, frame: u64, door_open: bool, magic_active: bool) {
+        if obj == Obj::Space || obj == Obj::Vacated {
+            self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
+            return;
+        }
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
         self.atlas.draw_quad_scaled(quad, bank, pal, x, y, CELL_PX / 16.0);
     }
@@ -318,6 +360,9 @@ impl Renderer {
         // the halo lights the surroundings without washing out the gem's
         // own sparkle.
         let mut diamonds = Vec::new();
+        // Boulder ground shadows, drawn after the terrain so the blobs
+        // darken the ground under/behind the rocks (not the rocks' tops).
+        let mut boulder_shadows = Vec::new();
         for cy in y0..y1 {
             for cx in x0..x1 {
                 let cell = cave.cell_at(cx, cy);
@@ -351,6 +396,7 @@ impl Renderer {
                             // Backdrop now, gem sprite after the glow pass.
                             self.draw_backdrop(
                                 Obj::Space,
+                                idx,
                                 cave_idx,
                                 bank,
                                 sx_c,
@@ -380,12 +426,26 @@ impl Renderer {
                         }
                     }
                 }
-                let (shade_left, shade_top) = wall_shadow_sides(cave, cx, cy);
-                self.wall_shadow.draw(shade_left, shade_top, sx_c, sy_c, CELL_PX);
+                let (shade_left, shade_top, shade_diag) = wall_shadow_sides(cave, cx, cy);
+                self.wall_shadow.draw(
+                    shade_left,
+                    shade_top,
+                    shade_diag,
+                    sx_c,
+                    sy_c,
+                    CELL_PX,
+                    shadow_variation(cx, cy),
+                );
                 if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) {
                     glows.push((sx_c + CELL_PX / 2.0, sy_c + CELL_PX / 2.0));
                 }
+                if cell.obj == Obj::Boulder {
+                    boulder_shadows.push((sx_c, sy_c));
+                }
             }
+        }
+        for (bx, by) in boulder_shadows {
+            self.wall_shadow.draw_boulder_shadow(bx, by, CELL_PX);
         }
         if !glows.is_empty() {
             self.diamond_glow.apply_material();
@@ -402,6 +462,9 @@ impl Renderer {
                 self.diamond_glow.apply_material();
                 self.diamond_glow.draw(frame, sx + CELL_PX / 2.0, sy + CELL_PX / 2.0, CELL_PX);
                 self.diamond_glow.reset_material();
+            }
+            if obj == Obj::Boulder {
+                self.wall_shadow.draw_boulder_shadow(sx, sy, CELL_PX);
             }
             self.draw_cell_sliding(obj, idx, spin, cave_idx, bank, sx, sy, frame, door_open, magic_active);
         }

@@ -601,6 +601,10 @@ async fn main() {
 
     boulder_dash::render::hud::init_font();
     let renderer = Renderer::new();
+    // BDMUD=<0-2> forces the dirt panorama style (visual verification).
+    if let Ok(v) = std::env::var("BDMUD") {
+        renderer.mud_variant.set(v.parse().unwrap_or(0));
+    }
 
     // Headless flow-screen shot: BDSHOT_FLOW=<screen> with BDSHOT supplying
     // the frame count and output path (cave/script fields ignored).
@@ -691,8 +695,13 @@ async fn main() {
             }
         }
 
-        // F = fullscreen toggle.
+        // F = cycle the dirt panorama style (orange / grassy / loam).
         if is_key_pressed(KeyCode::F) {
+            renderer.cycle_mud();
+        }
+
+        // F11 = fullscreen toggle.
+        if is_key_pressed(KeyCode::F11) {
             fullscreen = !fullscreen;
             set_fullscreen(fullscreen);
         }
