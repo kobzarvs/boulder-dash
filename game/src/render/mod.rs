@@ -233,6 +233,19 @@ impl Renderer {
                 let sy_c = HUD_H + cy as f32 * CELL_PX - cam.y;
                 match slides.slide_for(idx, frame) {
                     Some((obj, fx, fy)) => {
+                        // Draw the space the object passes through FIRST —
+                        // the sliding quad's transparent pixels must show the
+                        // texture underneath, not the clear color.
+                        self.draw_cell(
+                            Obj::Space,
+                            cave_idx,
+                            bank,
+                            sx_c,
+                            sy_c,
+                            frame,
+                            door_open,
+                            magic_active,
+                        );
                         let sx = fx * CELL_PX - cam.x;
                         let sy = HUD_H + fy * CELL_PX - cam.y;
                         self.draw_cell_sliding(

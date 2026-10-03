@@ -456,8 +456,10 @@ fn parse_shot() -> Option<ShotSpec> {
         if tok.len() < 2 {
             continue;
         }
-        let (code, n) = tok.split_at(1);
-        let n: u32 = match n.parse() {
+        // Split into leading letter codes ("R", "GL") and the digit count.
+        let digit_at = tok.find(|c: char| c.is_ascii_digit()).unwrap_or(tok.len());
+        let (code, digits) = tok.split_at(digit_at);
+        let n: u32 = match digits.parse() {
             Ok(n) => n,
             Err(_) => continue,
         };
