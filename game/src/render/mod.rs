@@ -28,7 +28,9 @@ pub mod diamond;
 pub mod hud;
 pub mod nametable;
 pub mod rockford;
+pub mod shadow;
 pub mod slide;
+pub mod wall;
 
 use macroquad::prelude::*;
 
@@ -43,6 +45,8 @@ use diamond::DiamondArt;
 use hud::HUD_H;
 use nametable::Screens;
 use rockford::{RockfordAnim, RockfordArt};
+use shadow::WallShadow;
+use wall::WallArt;
 
 pub struct Renderer {
     pub atlas: Atlas,
@@ -51,6 +55,8 @@ pub struct Renderer {
     rockford_art: RockfordArt,
     boulder_art: BoulderArt,
     diamond_art: DiamondArt,
+    wall_art: WallArt,
+    wall_shadow: WallShadow,
 }
 
 /// CHR bank holding the cave's world art: banks 0-3 for worlds 1-4,
@@ -63,6 +69,21 @@ pub fn world_bank(cave_idx: usize) -> usize {
 /// World group 0-5, the static-object metatile variant index.
 fn variant(cave_idx: usize) -> usize {
     cave_idx / 4
+}
+
+/// Wall-contact shadow flags for a cell: walls cast onto their right and
+/// bottom neighbors (the light is upper-left), so a cell shaded from the
+/// left and/or top. A diagonal wall with no edge walls gives a corner
+/// touch on both sides. Walls themselves cast but never receive.
+fn wall_shadow_sides(cave: &Cave, cx: usize, cy: usize) -> (bool, bool) {
+    let wall = |x: usize, y: usize| matches!(cave.cell_at(x, y).obj, Obj::Steel | Obj::Brick);
+    if wall(cx, cy) {
+        return (false, false);
+    }
+    let left = cx > 0 && wall(cx - 1, cy);
+    let top = cy > 0 && wall(cx, cy - 1);
+    let diag = !left && !top && cx > 0 && cy > 0 && wall(cx - 1, cy - 1);
+    (left || diag, top || diag)
 }
 
 impl Default for Renderer {
@@ -79,6 +100,8 @@ impl Renderer {
             rockford_art: RockfordArt::new(),
             boulder_art: BoulderArt::new(),
             diamond_art: DiamondArt::new(),
+            wall_art: WallArt::new(),
+            wall_shadow: WallShadow::new(),
         }
     }
 
@@ -127,6 +150,10 @@ impl Renderer {
         if obj == Obj::Diamond || obj == Obj::PendingDiamond {
             self.draw_backdrop(backdrop, cave_idx, bank, x, y, frame, door_open, magic_active);
             self.diamond_art.draw(frame, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Steel {
+            self.wall_art.draw(cell_idx, x, y, CELL_PX);
             return;
         }
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
@@ -323,6 +350,8 @@ impl Renderer {
                         )
                     }
                 }
+                let (shade_left, shade_top) = wall_shadow_sides(cave, cx, cy);
+                self.wall_shadow.draw(shade_left, shade_top, sx_c, sy_c, CELL_PX);
             }
         }
         for (obj, idx, spin, sx, sy) in sliding {
