@@ -7,18 +7,24 @@
 //!   ROM's `(cave>>2)*4` variant offset in `metatile_variant_select` $B586),
 //!   not animated. The 6/9 quad "frames" in `METATILE_SEQS` rows 0-7 are the
 //!   per-world art variants; quads 6-8 of the shared wall record are the
-//!   magic-wall-active ($F3EB) and open-door ($F3F3) quads.
+//!   magic-wall-active ($F3EB) and open-door ($F3F3) quads. EXCEPTION: the
+//!   boulder is drawn from the HD Blender sprite atlas (`boulder` module)
+//!   with per-cell variants and pre-rendered spin frames, not from CHR quads.
 //! - Firefly/butterfly (0xB/0xC) animate by cycling their 6 quads on the
 //!   global frame counter.
 //! - Diamond/pending/explosion/amoeba (8/9/A/D/F) have a single quad; the
 //!   original sparkles them via CHR bank switching — we approximate with a
-//!   palette flash.
+//!   palette flash. EXCEPTION: diamonds are drawn from the HD Blender
+//!   sparkle atlas (`diamond` module) — a path-traced gem with an orbiting
+//!   light rig, the counterpart of the palette shimmer.
 //! - Rockford is two parts (Ghidra Q7): his body is background metatile 15,
 //!   drawn in the cell loop from the animation banks like any other object;
 //!   his head is a 2-sprite 16x8 overlay (see `rockford` module).
 
 pub mod atlas;
+pub mod boulder;
 pub mod camera;
+pub mod diamond;
 pub mod hud;
 pub mod nametable;
 pub mod rockford;
@@ -31,7 +37,9 @@ use crate::data::tiles::{METATILE_ATTRS, METATILE_SEQS};
 use crate::engine::{Cave, Obj, HEIGHT, WIDTH};
 
 use atlas::Atlas;
+use boulder::BoulderArt;
 use camera::{Camera, CELL_PX, VIEW_H, VIEW_W};
+use diamond::DiamondArt;
 use hud::HUD_H;
 use nametable::Screens;
 use rockford::{RockfordAnim, RockfordArt};
@@ -41,6 +49,8 @@ pub struct Renderer {
     /// Pre-rendered decoded screen nametables (title/map/password/...).
     pub screens: Screens,
     rockford_art: RockfordArt,
+    boulder_art: BoulderArt,
+    diamond_art: DiamondArt,
 }
 
 /// CHR bank holding the cave's world art: banks 0-3 for worlds 1-4,
@@ -67,6 +77,8 @@ impl Renderer {
             atlas: Atlas::new(),
             screens: Screens::new(),
             rockford_art: RockfordArt::new(),
+            boulder_art: BoulderArt::new(),
+            diamond_art: DiamondArt::new(),
         }
     }
 
@@ -88,10 +100,17 @@ impl Renderer {
 
     /// One cave cell: pick the quad + palette and draw it. Palettes follow
     /// the ROM's per-object attribute table ($F453); flash effects override.
+    /// Boulders and diamonds bypass the atlas: HD Blender sprites, per-cell
+    /// variant / sparkle frame. `backdrop` (the world's Space art) is drawn
+    /// UNDER the HD sprite so the background shows around it instead of a
+    /// black void.
     #[allow(clippy::too_many_arguments)]
     fn draw_cell(
         &self,
         obj: Obj,
+        cell_idx: usize,
+        spin: boulder::Spin,
+        backdrop: Obj,
         cave_idx: usize,
         bank: usize,
         x: f32,
@@ -100,6 +119,24 @@ impl Renderer {
         door_open: bool,
         magic_active: bool,
     ) {
+        if obj == Obj::Boulder {
+            self.draw_backdrop(backdrop, cave_idx, bank, x, y, frame, door_open, magic_active);
+            self.boulder_art.draw(cell_idx, spin, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Diamond || obj == Obj::PendingDiamond {
+            self.draw_backdrop(backdrop, cave_idx, bank, x, y, frame, door_open, magic_active);
+            self.diamond_art.draw(frame, x, y, CELL_PX);
+            return;
+        }
+        let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
+        self.atlas.draw_quad_scaled(quad, bank, pal, x, y, CELL_PX / 16.0);
+    }
+
+    /// The backdrop quad (Mud/Space of this world's variant), drawn under
+    /// HD item sprites.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_backdrop(&self, obj: Obj, cave_idx: usize, bank: usize, x: f32, y: f32, frame: u64, door_open: bool, magic_active: bool) {
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
         self.atlas.draw_quad_scaled(quad, bank, pal, x, y, CELL_PX / 16.0);
     }
@@ -111,6 +148,8 @@ impl Renderer {
     fn draw_cell_sliding(
         &self,
         obj: Obj,
+        cell_idx: usize,
+        spin: boulder::Spin,
         cave_idx: usize,
         bank: usize,
         x: f32,
@@ -119,6 +158,14 @@ impl Renderer {
         door_open: bool,
         magic_active: bool,
     ) {
+        if obj == Obj::Boulder {
+            self.boulder_art.draw(cell_idx, spin, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Diamond || obj == Obj::PendingDiamond {
+            self.diamond_art.draw(frame, x, y, CELL_PX);
+            return;
+        }
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
         let scale = CELL_PX / 16.0;
         draw_texture_ex(
@@ -242,6 +289,9 @@ impl Renderer {
                         // texture underneath, not the clear color.
                         self.draw_cell(
                             Obj::Space,
+                            idx,
+                            boulder::Spin::default(),
+                            Obj::Space,
                             cave_idx,
                             bank,
                             sx_c,
@@ -252,23 +302,31 @@ impl Renderer {
                         );
                         let sx = fx * CELL_PX - cam.x;
                         let sy = HUD_H + fy * CELL_PX - cam.y;
-                        sliding.push((obj, sx, sy));
+                        sliding.push((obj, idx, slides.spin_for(idx, frame), sx, sy));
                     }
-                    None => self.draw_cell(
-                        cell.obj,
-                        cave_idx,
-                        bank,
-                        sx_c,
-                        sy_c,
-                        frame,
-                        door_open,
-                        magic_active,
-                    ),
+                    None => {
+                        // HD items sit on the world's BACKDROP (Space art),
+                        // never on dirt: the background shows around the
+                        // sprite instead of a black void or a mud patch.
+                        self.draw_cell(
+                            cell.obj,
+                            idx,
+                            slides.rest_spin(idx),
+                            Obj::Space,
+                            cave_idx,
+                            bank,
+                            sx_c,
+                            sy_c,
+                            frame,
+                            door_open,
+                            magic_active,
+                        )
+                    }
                 }
             }
         }
-        for (obj, sx, sy) in sliding {
-            self.draw_cell_sliding(obj, cave_idx, bank, sx, sy, frame, door_open, magic_active);
+        for (obj, idx, spin, sx, sy) in sliding {
+            self.draw_cell_sliding(obj, idx, spin, cave_idx, bank, sx, sy, frame, door_open, magic_active);
         }
         if let Some(head) = rock.head_frame(frame) {
             // Body + head TOGETHER at the fractional slide position (the NES
