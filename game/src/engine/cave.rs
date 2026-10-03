@@ -110,9 +110,11 @@ impl Cave {
     /// Load cave `cave` (0..24) from the extracted ROM data at difficulty
     /// `level` (1..=4). `seed` is reserved (unused): the engine is fully
     /// deterministic.
+    /// Load cave `cave` (0..24) at difficulty `level` (1..=4). The map comes
+    /// from [`cave_ids`] (editable emoji files, ROM grid as fallback).
     pub fn new(cave: usize, level: u8, seed: u64) -> Self {
         assert!(cave < CAVE_COUNT, "cave index out of range");
-        Self::from_cells(&CAVES[cave], CAVE_PARAMS[cave], cave, level, seed)
+        Self::from_cells(&cave_ids(cave), CAVE_PARAMS[cave], cave, level, seed)
     }
 
     /// Build a cave from raw object ids (as in [`CAVES`]) and parameters.
@@ -971,4 +973,13 @@ fn build_field(ids: &[u8], params_spawn: Option<usize>) -> (Field, Option<usize>
         cells[s] = Cell::new(Obj::Rockford);
     }
     (Field { cells }, door, spawn)
+}
+
+/// The grid a cave loads from: the editable emoji file
+/// (`assets/caves/cave_XX.txt`), falling back to the ROM-extracted
+/// reference grid if the file fails to parse.
+pub fn cave_ids(cave: usize) -> [u8; CELLS] {
+    use crate::data::caves::{parse_cave, CAVE_FILES};
+    assert!(cave < CAVE_COUNT, "cave index out of range");
+    parse_cave(CAVE_FILES[cave]).unwrap_or(CAVES[cave])
 }

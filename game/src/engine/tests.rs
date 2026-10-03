@@ -573,3 +573,16 @@ fn cave_0_loads_from_rom_data_and_spawns_at_param_cell() {
     assert_eq!(cave.diamonds_needed(), 10);
 }
 
+
+/// Regression guard: caves must load from the editable emoji files (with
+/// the ROM grid as fallback), not bypass them. Catches the parse path
+/// being silently dropped from `Cave::new`.
+#[test]
+fn caves_load_from_emoji_files() {
+    use crate::data::caves::{parse_cave, CAVE_FILES};
+    use crate::engine::cave::cave_ids;
+    for i in 0..crate::data::caves::CAVE_COUNT {
+        let parsed = parse_cave(CAVE_FILES[i]).expect("emoji cave file must parse");
+        assert_eq!(cave_ids(i), parsed, "cave {i} must load from its emoji file");
+    }
+}
