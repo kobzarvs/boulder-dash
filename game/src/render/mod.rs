@@ -26,6 +26,7 @@ pub mod backdrop;
 pub mod boulder;
 pub mod camera;
 pub mod diamond;
+pub mod door;
 pub mod glow;
 pub mod hud;
 pub mod mud;
@@ -46,6 +47,7 @@ use backdrop::BackdropArt;
 use boulder::BoulderArt;
 use camera::{Camera, CELL_PX, VIEW_H, VIEW_W};
 use diamond::DiamondArt;
+use door::DoorArt;
 use glow::DiamondGlow;
 use hud::HUD_H;
 use mud::MudArt;
@@ -63,6 +65,7 @@ pub struct Renderer {
     robot_art: RobotArt,
     boulder_art: BoulderArt,
     diamond_art: DiamondArt,
+    door_art: DoorArt,
     wall_art: WallArt,
     wall_shadow: WallShadow,
     diamond_glow: DiamondGlow,
@@ -127,6 +130,7 @@ impl Renderer {
             robot_art: RobotArt::new(),
             boulder_art: BoulderArt::new(),
             diamond_art: DiamondArt::new(),
+            door_art: DoorArt::new(),
             wall_art: WallArt::new(),
             wall_shadow: WallShadow::new(),
             diamond_glow: DiamondGlow::new(),
@@ -210,6 +214,13 @@ impl Renderer {
         }
         if obj == Obj::Mud {
             self.mud_art.draw(self.mud_variant.get(), cell_idx, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Door {
+            // HD stargate on the cave backdrop (closed = inactive ring,
+            // open = animated event horizon; the NES metatile door is gone).
+            self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
+            self.door_art.draw(door_open, frame, x, y, CELL_PX);
             return;
         }
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
