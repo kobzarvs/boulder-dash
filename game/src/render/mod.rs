@@ -390,7 +390,8 @@ impl Renderer {
                 let idx = cy * WIDTH + cx;
                 let sx_c = cx as f32 * CELL_PX - cam.x;
                 let sy_c = HUD_H + cy as f32 * CELL_PX - cam.y;
-                match slides.slide_for(idx, frame) {
+                let slide = slides.slide_for(idx, frame);
+                match slide {
                     Some((obj, fx, fy)) => {
                         // Draw the space the object passes through FIRST —
                         // the sliding quad's transparent pixels must show the
@@ -457,11 +458,17 @@ impl Renderer {
                     CELL_PX,
                     shadow_variation(cx, cy),
                 );
-                if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) {
-                    glows.push((sx_c + CELL_PX / 2.0, sy_c + CELL_PX / 2.0));
-                }
-                if cell.obj == Obj::Boulder {
-                    boulder_shadows.push((sx_c, sy_c));
+                if slide.is_none() {
+                    // Resting-object effects only: while an object slides
+                    // INTO this cell the engine already shows it here, and
+                    // these would pop in at the destination ahead of the
+                    // sliding sprite (its own shadow/glow travels with it).
+                    if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) {
+                        glows.push((sx_c + CELL_PX / 2.0, sy_c + CELL_PX / 2.0));
+                    }
+                    if cell.obj == Obj::Boulder {
+                        boulder_shadows.push((sx_c, sy_c));
+                    }
                 }
             }
         }
