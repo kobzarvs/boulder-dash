@@ -40,7 +40,7 @@ use macroquad::prelude::*;
 
 use boulder_dash::audio::slots;
 use boulder_dash::engine::ascii::{ascii_params, cells_from_ascii};
-use boulder_dash::engine::{Cave, CaveStatus, Event, Input, START_RESERVE_LIVES};
+use boulder_dash::engine::{Cave, CaveStatus, Event, Input, START_RESERVE_LIVES, WIDTH};
 use boulder_dash::render::camera::{Camera, CELL_PX};
 use boulder_dash::render::rockford::RockfordAnim;
 use boulder_dash::render::slide::SlideTracker;
@@ -60,6 +60,9 @@ const SPLASH_TICKS: u32 = 240;
 const TALLY_PER_TICK: u32 = 2;
 /// Extra hold after the tally finishes, in ticks.
 const TALLY_HOLD_TICKS: u32 = 75;
+/// Cave-complete banner delay: the portal pull-in plays on the bare cave
+/// first, the tally panel appears once he has spiralled into the ring.
+const TALLY_DELAY_TICKS: u32 = 55;
 
 pub const WORLD_COUNT: usize = 6;
 pub const TOWNS_PER_WORLD: usize = 4;
@@ -432,8 +435,9 @@ impl Flow {
 
             State::CaveComplete { ticks, bonus } => {
                 let ticks = ticks + 1;
-                let shown = (ticks * TALLY_PER_TICK).min(bonus);
-                let done = shown >= bonus && ticks >= bonus / TALLY_PER_TICK + TALLY_HOLD_TICKS;
+                let tally = ticks.saturating_sub(TALLY_DELAY_TICKS);
+                let shown = (tally * TALLY_PER_TICK).min(bonus);
+                let done = shown >= bonus && tally >= bonus / TALLY_PER_TICK + TALLY_HOLD_TICKS;
                 if done || just.a || just.start {
                     return self.finish_cave(audio);
                 }
@@ -525,7 +529,21 @@ impl Flow {
         let mut respawned = false;
         for ev in events {
             match ev {
-                Event::CaveComplete { time_bonus } => complete = Some(time_bonus),
+                Event::CaveComplete { time_bonus } => {
+                    complete = Some(time_bonus);
+                    if let Some(rock) = &mut self.rock {
+                        // He is standing on the door cell: the portal pulls
+                        // him into its center.
+                        let pos = cave.rockford_pos();
+                        rock.start_suck(
+                            (
+                                (pos % WIDTH) as f32 + 0.5,
+                                (pos / WIDTH) as f32 + 0.5,
+                            ),
+                            self.tick,
+                        );
+                    }
+                }
                 Event::Respawned => respawned = true,
                 Event::RockfordDied { cause } => {
                     if let Some(a) = audio {
@@ -773,8 +791,10 @@ impl Flow {
                 renderer.draw_overlay(&["PAUSED", "!PRESS START"], self.tick)
             }
             State::CaveComplete { ticks, bonus } => {
-                let shown = (*ticks * TALLY_PER_TICK).min(*bonus);
-                screens::draw_clear_tally(&renderer.atlas, shown, total, self.tick);
+                if *ticks >= TALLY_DELAY_TICKS {
+                    let shown = (ticks.saturating_sub(TALLY_DELAY_TICKS) * TALLY_PER_TICK).min(*bonus);
+                    screens::draw_clear_tally(&renderer.atlas, shown, total, self.tick);
+                }
             }
             _ => {}
         }
@@ -869,11 +889,16 @@ impl Flow {
         }
         // BDEMPTYCAVE: substitute a mostly-empty field (Rockford mid-cave, a
         // few reference objects) for scroll/camera debugging.
-        self.caves[0] = Some(if std::env::var("BDEMPTYCAVE").is_ok() {
+        let mut cave = if std::env::var("BDEMPTYCAVE").is_ok() {
             Cave::from_cells(&empty_test_cave(), ascii_params(), cave_idx, level, 0)
         } else {
             Cave::new(cave_idx, level, 0)
-        });
+        };
+        // BDDOOR: force the exit open (door/portal visual debugging).
+        if std::env::var("BDDOOR").is_ok() {
+            cave.debug_open_door();
+        }
+        self.caves[0] = Some(cave);
         self.active = 0;
         self.cur_cave_idx = cave_idx;
         let mut no_audio = None;
@@ -884,6 +909,7 @@ impl Flow {
 
 /// BDEMPTYCAVE field: open space with a few reference objects, Rockford
 /// mid-cave (field row 10) so the camera can scroll the full vertical range.
+/// The exit door sits two cells right of him (portal/suck-in debugging).
 fn empty_test_cave() -> [u8; boulder_dash::engine::CELLS] {
     cells_from_ascii(&[
         "                                      ",
@@ -895,7 +921,7 @@ fn empty_test_cave() -> [u8; boulder_dash::engine::CELLS] {
         "            ++++++                    ",
         "                                      ",
         "                                      ",
-        "                  r                   ",
+        "                  r  x                ",
         "                                      ",
         "                                      ",
         "                    ++++++            ",

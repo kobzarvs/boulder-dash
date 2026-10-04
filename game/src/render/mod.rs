@@ -432,8 +432,17 @@ impl Renderer {
                             // HD items sit on the world's BACKDROP (Space art),
                             // never on dirt: the background shows around the
                             // sprite instead of a black void or a mud patch.
+                            // The door cell keeps drawing the gate even with
+                            // Rockford inside: the engine replaces the Door
+                            // object with him on entry, but the portal must
+                            // stay visible while it pulls him in.
+                            let obj = if Some(idx) == cave.door_pos() {
+                                Obj::Door
+                            } else {
+                                cell.obj
+                            };
                             self.draw_cell(
-                                cell.obj,
+                                obj,
                                 idx,
                                 slides.rest_spin(idx),
                                 Obj::Space,
@@ -502,13 +511,22 @@ impl Renderer {
             // his feet rest on the cell's base line, centered horizontally.
             // While pushing, the sprite shifts towards the boulder so his
             // hands actually touch it.
-            let s = CELL_PX * robot::DRAW_CELLS;
+            let mut s = CELL_PX * robot::DRAW_CELLS;
+            let mut pos = rock.pos;
+            if let Some(center) = rock.suck_center() {
+                // Portal pull-in: drift towards the ring's center while
+                // shrinking into it (scale comes from robot_frame).
+                let k = 1.0 - rf.scale;
+                pos.0 += (center.0 - 0.5 - pos.0) * k;
+                pos.1 += (center.1 - 1.0 - pos.1) * k;
+                s *= rf.scale;
+            }
             let mut dx = (CELL_PX - s) / 2.0;
             if rf.row == robot::ROW_PUSH {
                 dx += if rf.flip { -s * robot::PUSH_REACH } else { s * robot::PUSH_REACH };
             }
-            let sx = rock.pos.0 * CELL_PX - cam.x + dx;
-            let sy = HUD_H + rock.pos.1 * CELL_PX - cam.y + CELL_PX - s * robot::FEET_FRACTION;
+            let sx = pos.0 * CELL_PX - cam.x + dx;
+            let sy = HUD_H + pos.1 * CELL_PX - cam.y + CELL_PX - s * robot::FEET_FRACTION;
             self.robot_art
                 .draw(rf.row, rf.frame, sx, sy, s, rf.flip, rf.rotation, rf.alpha);
         }

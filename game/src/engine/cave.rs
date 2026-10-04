@@ -261,6 +261,13 @@ impl Cave {
         self.door_open
     }
 
+    /// Force the exit door open (BDSHOT visual debugging: no event, no
+    /// flash, no quota check).
+    #[doc(hidden)]
+    pub fn debug_open_door(&mut self) {
+        self.door_open = true;
+    }
+
     pub fn door_pos(&self) -> Option<usize> {
         self.door_pos
     }

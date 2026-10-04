@@ -113,6 +113,9 @@ const FIDGET_START: u32 = 150;
 const FIDGET_PERIOD: u32 = 480;
 /// Length of one fidget play in ticks (16 frames at half rate).
 const FIDGET_LEN: u32 = 32;
+/// Portal pull-in length in ticks (cave complete: he spirals into the
+/// event horizon, shrinking and fading).
+const SUCK_TICKS: u64 = 50;
 
 /// One resolved draw command for the robot atlas.
 pub struct RobotFrame {
@@ -121,6 +124,8 @@ pub struct RobotFrame {
     pub flip: bool,
     pub rotation: f32,
     pub alpha: f32,
+    /// 1.0 at full size; shrinks as the portal pulls him in.
+    pub scale: f32,
 }
 
 /// Wrap to (-180, 180] degrees.
@@ -163,6 +168,8 @@ pub struct RockfordAnim {
     push_ticks: u32,
     /// Grab-button snap push window: (direction, ticks left).
     snap_push: Option<(Direction, u32)>,
+    /// Portal pull-in (cave complete): (door cell center, start tick).
+    suck: Option<((f32, f32), u64)>,
 }
 
 impl RockfordAnim {
@@ -180,6 +187,7 @@ impl RockfordAnim {
             push_dir: None,
             push_ticks: 0,
             snap_push: None,
+            suck: None,
         }
     }
 
@@ -279,6 +287,19 @@ impl RockfordAnim {
         self.dead_ticks == 0
     }
 
+    /// The open portal starts pulling him in (cave complete): he spirals
+    /// towards the ring's center, shrinking and fading. `center` is the
+    /// door cell's center in cell coords.
+    pub fn start_suck(&mut self, center: (f32, f32), tick: u64) {
+        self.suck = Some((center, tick));
+    }
+
+    /// Door cell center while the portal pulls him in (for the draw layer's
+    /// position lerp).
+    pub fn suck_center(&self) -> Option<(f32, f32)> {
+        self.suck.map(|(c, _)| c)
+    }
+
     /// Atlas row/frame to draw this tick, or `None` once the death arc has
     /// played out.
     pub fn robot_frame(&self, tick: u64) -> Option<RobotFrame> {
@@ -291,9 +312,26 @@ impl RockfordAnim {
                     flip: false,
                     rotation: self.dead_ticks as f32 * 0.22,
                     alpha: 1.0 - self.dead_ticks as f32 / DEATH_ARC_TICKS as f32,
+                    scale: 1.0,
                 });
             }
             return None;
+        }
+        if let Some((_, start)) = self.suck {
+            // Pulled into the portal: idle row, spinning and shrinking into
+            // the ring's core (the draw layer lerps him to its center).
+            let k = (tick.saturating_sub(start) as f32 / SUCK_TICKS as f32).min(1.0);
+            if k >= 1.0 {
+                return None;
+            }
+            return Some(RobotFrame {
+                row: ROW_IDLE + robot::RobotArt::az_row(self.azimuth),
+                frame: (tick as usize / 3) % FRAMES,
+                flip: self.azimuth < 0.0,
+                rotation: k * 4.5,
+                alpha: 1.0 - k * k,
+                scale: 1.0 - 0.9 * k,
+            });
         }
         if let Some(d) = self.push_dir {
             // Leaning into the boulder; shove pulses on a 32-tick loop.
@@ -303,6 +341,7 @@ impl RockfordAnim {
                 flip: d == Direction::Left,
                 rotation: 0.0,
                 alpha: 1.0,
+                scale: 1.0,
             });
         }
         if let Some((d, left)) = self.snap_push {
@@ -314,6 +353,7 @@ impl RockfordAnim {
                 flip: d == Direction::Left,
                 rotation: 0.0,
                 alpha: 1.0,
+                scale: 1.0,
             });
         }
         if self.walking() {
@@ -325,6 +365,7 @@ impl RockfordAnim {
                 flip: self.azimuth < 0.0,
                 rotation: 0.0,
                 alpha: 1.0,
+                scale: 1.0,
             });
         }
         if self.idle_ticks >= FIDGET_START {
@@ -337,6 +378,7 @@ impl RockfordAnim {
                     flip: false,
                     rotation: 0.0,
                     alpha: 1.0,
+                    scale: 1.0,
                 });
             }
         }
@@ -348,6 +390,7 @@ impl RockfordAnim {
             flip: self.azimuth < 0.0,
             rotation: 0.0,
             alpha: 1.0,
+            scale: 1.0,
         })
     }
 }
