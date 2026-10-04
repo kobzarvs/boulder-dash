@@ -32,6 +32,9 @@
 //!   renders a flow screen instead; <screen> is one of title, color,
 //!   password, map, mapc (map with cleared towns), splash, precave,
 //!   gameover, ending, demo.
+//!
+//! Art-style switches: F1 in gameplay opens the per-item HD/NES toggle menu
+//! (pauses the game); `BDNES=<name,...>` presets NES art for headless shots.
 
 use macroquad::audio::{self as mq, PlaySoundParams, Sound};
 use macroquad::prelude::*;
@@ -551,12 +554,14 @@ fn blit(rt: &RenderTarget) {
 }
 
 /// Draw the current flow state into the render target, then to the window.
+/// `gfx_sel` highlights a row in the F1 graphics menu (cave states only).
 fn render_frame(
     rt: &RenderTarget,
     game_cam: &Camera2D,
     screens_cam: &Camera2D,
     flow: &mut Flow,
     renderer: &Renderer,
+    gfx_sel: Option<usize>,
 ) {
     // Gameplay states use the full 512x480 frame; flow screens draw in
     // 256x240 logical coordinates through a x2-zoom camera.
@@ -567,6 +572,9 @@ fn render_frame(
     set_camera(cam);
     clear_background(BLACK);
     flow.render(renderer);
+    if let Some(sel) = gfx_sel {
+        renderer.draw_gfx_menu(sel);
+    }
     blit(rt);
 }
 
@@ -605,6 +613,13 @@ async fn main() {
     if let Ok(v) = std::env::var("BDMUD") {
         renderer.mud_variant.set(v.parse().unwrap_or(0));
     }
+    // BDNES=<name,...> forces the listed items to NES art (names as in the
+    // F1 menu), e.g. BDNES=rockford,walls — visual verification.
+    if let Ok(v) = std::env::var("BDNES") {
+        for name in v.split(',') {
+            renderer.hd.set_by_name(name.trim(), false);
+        }
+    }
 
     // Headless flow-screen shot: BDSHOT_FLOW=<screen> with BDSHOT supplying
     // the frame count and output path (cave/script fields ignored).
@@ -617,7 +632,7 @@ async fn main() {
         for _ in 0..frames.max(1) {
             flow.update(Pad::default(), &mut audio);
         }
-        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer);
+        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer, None);
         get_screen_data().export_png(&out);
         rt.texture.get_texture_data().export_png(&(out.clone() + ".rt.png"));
         eprintln!("BDSHOT_FLOW: screen {name} ({}), {frames} frames -> {out}", flow.state_name());
@@ -629,6 +644,8 @@ async fn main() {
         let mut audio: Option<Audio> = None;
         let mut flow = Flow::new();
         flow.debug_play(cave_idx.min(CAVE_COUNT - 1), 1);
+        // BDMENU=<row> also draws the F1 graphics menu with that row active.
+        let gfx_sel = std::env::var("BDMENU").ok().and_then(|v| v.parse().ok());
         for t in 0..frames {
             let input = scripted_input(&script, t);
             if std::env::var("BDDEBUG").is_ok() && t % 10 == 0 {
@@ -646,11 +663,11 @@ async fn main() {
                 }
             }
             flow.update(input_to_pad(input), &mut audio);
-            render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer);
+            render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer, gfx_sel);
             next_frame().await;
         }
         // Render once more and capture the backbuffer before presenting.
-        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer);
+        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer, gfx_sel);
         get_screen_data().export_png(&out);
         // Also dump the raw 256x240 render target for pixel-precise checks.
         rt.texture.get_texture_data().export_png(&(out.clone() + ".rt.png"));
@@ -673,6 +690,8 @@ async fn main() {
     let mut fullscreen = false;
     let mut flow = Flow::new();
     let mut acc = 0.0f32;
+    // F1 graphics menu: Some(row) while open. Pauses the game.
+    let mut gfx_menu: Option<usize> = None;
 
     loop {
         // Keep the render target at full physical resolution across resizes
@@ -767,17 +786,50 @@ async fn main() {
             a.pump().await;
         }
 
-        // Fixed 60 Hz flow/engine stepping.
+        // F1 = graphics menu (per-item HD/NES toggles), cave states only.
+        // While open the game is paused and arrows navigate/flip rows.
+        let in_cave = matches!(flow.state_name(), "playing" | "demo" | "complete");
+        if is_key_pressed(KeyCode::F1) {
+            gfx_menu = match gfx_menu {
+                Some(_) => None,
+                None if in_cave => Some(0),
+                None => None,
+            };
+        }
+        if gfx_menu.is_some() && !in_cave {
+            gfx_menu = None; // left the cave with the menu open
+        }
+        if let Some(sel) = gfx_menu {
+            let mut s = sel;
+            if is_key_pressed(KeyCode::Down) {
+                s = (s + 1) % 7;
+            }
+            if is_key_pressed(KeyCode::Up) {
+                s = (s + 6) % 7;
+            }
+            if is_key_pressed(KeyCode::Left)
+                || is_key_pressed(KeyCode::Right)
+                || is_key_pressed(KeyCode::X)
+                || is_key_pressed(KeyCode::Enter)
+            {
+                renderer.hd.toggle(s);
+            }
+            gfx_menu = Some(s);
+        }
+
+        // Fixed 60 Hz flow/engine stepping (frozen while the menu is open).
         let dt = get_frame_time().min(0.1);
         acc += dt;
         let mut stepped = 0;
         while acc >= TICK && stepped < 4 {
-            flow.update(pad, &mut audio);
+            if gfx_menu.is_none() {
+                flow.update(pad, &mut audio);
+            }
             acc -= TICK;
             stepped += 1;
         }
 
-        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer);
+        render_frame(&rt, &game_cam, &screens_cam, &mut flow, &renderer, gfx_menu);
         next_frame().await;
     }
 }

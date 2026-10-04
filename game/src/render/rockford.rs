@@ -13,7 +13,10 @@
 use macroquad::prelude::*;
 
 use crate::data::cave_params::{NES_PALETTE, ROCKFORD_COLORS};
-use crate::data::sprites::{HeadFrame, ROCKFORD_HEAD_TILES};
+use crate::data::sprites::{
+    HeadFrame, ROCKFORD_HEAD_DEATH, ROCKFORD_HEAD_IDLE, ROCKFORD_HEAD_TILES, ROCKFORD_HEAD_WALK_DOWN,
+    ROCKFORD_HEAD_WALK_LEFT, ROCKFORD_HEAD_WALK_RIGHT, ROCKFORD_HEAD_WALK_UP,
+};
 use crate::data::tiles::TILES;
 use crate::engine::{Cave, Direction};
 use crate::engine::WIDTH;
@@ -116,6 +119,12 @@ const FIDGET_LEN: u32 = 32;
 /// Portal pull-in length in ticks (cave complete: he spirals into the
 /// event horizon, shrinking and fading).
 const SUCK_TICKS: u64 = 50;
+/// Death head wobble lasts this many ticks (the ROM's 80-frame arc, $92=$50),
+/// then the head is gone until respawn (NES head-overlay mode).
+const DEATH_HEAD_TICKS: u32 = 80;
+/// Ticks standing still before settling into the front-facing idle blink
+/// (the ROM switches when the walk counter $9C runs out; NES head mode).
+const IDLE_SETTLE_TICKS: u32 = 24;
 
 /// One resolved draw command for the robot atlas.
 pub struct RobotFrame {
@@ -298,6 +307,28 @@ impl RockfordAnim {
     /// position lerp).
     pub fn suck_center(&self) -> Option<(f32, f32)> {
         self.suck.map(|(c, _)| c)
+    }
+
+    /// Head metasprite to draw this tick in NES art mode (frame-select
+    /// formulas match the ROM's $FE-based indexes), or `None` once the death
+    /// arc has played out.
+    pub fn head_frame(&self, tick: u64) -> Option<&'static HeadFrame> {
+        if self.dead_ticks > 0 {
+            if self.dead_ticks <= DEATH_HEAD_TICKS {
+                return Some(&ROCKFORD_HEAD_DEATH[((tick / 16) % 4) as usize]);
+            }
+            return None;
+        }
+        if !self.moving() && self.idle_ticks >= IDLE_SETTLE_TICKS {
+            return Some(&ROCKFORD_HEAD_IDLE[((tick / 32) % 4) as usize]);
+        }
+        let f = ((tick / 8) % 4) as usize;
+        Some(match self.facing {
+            Direction::Up => &ROCKFORD_HEAD_WALK_UP[f],
+            Direction::Down => &ROCKFORD_HEAD_WALK_DOWN[f],
+            Direction::Left => &ROCKFORD_HEAD_WALK_LEFT[f],
+            Direction::Right => &ROCKFORD_HEAD_WALK_RIGHT[f],
+        })
     }
 
     /// Atlas row/frame to draw this tick, or `None` once the death arc has

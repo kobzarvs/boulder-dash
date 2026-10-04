@@ -39,6 +39,7 @@ pub mod wall;
 
 use macroquad::prelude::*;
 
+use crate::data::sprites::ROCKFORD_BODY_QUAD;
 use crate::data::tiles::{METATILE_ATTRS, METATILE_SEQS};
 use crate::engine::{Cave, Obj, HEIGHT, WIDTH};
 
@@ -57,6 +58,90 @@ use rockford::{RockfordAnim, RockfordArt};
 use shadow::WallShadow;
 use wall::WallArt;
 
+/// Per-item art toggles (the F1 menu): true = HD Blender sprite, false =
+/// original NES metatile. Cells so the main loop can flip them through the
+/// shared &Renderer.
+pub struct HdToggles {
+    /// Rockford: HD robot vs NES body metatile + head overlay.
+    pub rockford: std::cell::Cell<bool>,
+    /// Boulders: HD spin atlas vs NES metatile (incl. their blob shadows).
+    pub boulder: std::cell::Cell<bool>,
+    /// Diamonds: HD sparkle sprite + glow halo vs NES glint metatile.
+    pub diamond: std::cell::Cell<bool>,
+    /// Exit door: HD stargate + shader horizon vs NES door metatile.
+    pub door: std::cell::Cell<bool>,
+    /// Steel/brick walls: HD masonry + contact shadows vs NES metatiles.
+    pub wall: std::cell::Cell<bool>,
+    /// Dirt: HD panorama vs NES metatile.
+    pub mud: std::cell::Cell<bool>,
+    /// Cave backdrop (space): HD rock texture vs NES space metatile.
+    pub backdrop: std::cell::Cell<bool>,
+}
+
+impl Default for HdToggles {
+    fn default() -> Self {
+        Self {
+            rockford: std::cell::Cell::new(true),
+            boulder: std::cell::Cell::new(true),
+            diamond: std::cell::Cell::new(true),
+            door: std::cell::Cell::new(true),
+            wall: std::cell::Cell::new(true),
+            mud: std::cell::Cell::new(true),
+            backdrop: std::cell::Cell::new(true),
+        }
+    }
+}
+
+impl HdToggles {
+    /// Menu rows: (label, hd-on) per item.
+    pub fn rows(&self) -> [(&'static str, bool); 7] {
+        [
+            ("ROCKFORD", self.rockford.get()),
+            ("BOULDERS", self.boulder.get()),
+            ("DIAMONDS", self.diamond.get()),
+            ("DOOR", self.door.get()),
+            ("WALLS", self.wall.get()),
+            ("MUD", self.mud.get()),
+            ("BACKDROP", self.backdrop.get()),
+        ]
+    }
+
+    /// Flip one menu row.
+    pub fn toggle(&self, row: usize) {
+        let cells = [
+            &self.rockford,
+            &self.boulder,
+            &self.diamond,
+            &self.door,
+            &self.wall,
+            &self.mud,
+            &self.backdrop,
+        ];
+        if let Some(c) = cells.get(row) {
+            c.set(!c.get());
+        }
+    }
+
+    /// Set a toggle by its row label (BDNES env debug helper).
+    pub fn set_by_name(&self, name: &str, hd: bool) {
+        let idx = ["ROCKFORD", "BOULDERS", "DIAMONDS", "DOOR", "WALLS", "MUD", "BACKDROP"]
+            .iter()
+            .position(|n| n.eq_ignore_ascii_case(name));
+        if let Some(i) = idx {
+            let cells = [
+                &self.rockford,
+                &self.boulder,
+                &self.diamond,
+                &self.door,
+                &self.wall,
+                &self.mud,
+                &self.backdrop,
+            ];
+            cells[i].set(hd);
+        }
+    }
+}
+
 pub struct Renderer {
     pub atlas: Atlas,
     /// Pre-rendered decoded screen nametables (title/map/password/...).
@@ -74,6 +159,8 @@ pub struct Renderer {
     /// Current dirt panorama style (F cycles; Cell so the main loop can
     /// switch it through the shared &Renderer).
     pub mud_variant: std::cell::Cell<usize>,
+    /// HD/NES art toggles (F1 menu).
+    pub hd: HdToggles,
 }
 
 /// CHR bank holding the cave's world art: banks 0-3 for worlds 1-4,
@@ -137,6 +224,7 @@ impl Renderer {
             backdrop_art: BackdropArt::new(),
             mud_art: MudArt::new(),
             mud_variant: std::cell::Cell::new(0),
+            hd: HdToggles::default(),
         }
     }
 
@@ -183,40 +271,41 @@ impl Renderer {
         door_open: bool,
         magic_active: bool,
     ) {
-        if obj == Obj::Boulder {
+        if obj == Obj::Boulder && self.hd.boulder.get() {
             self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             self.boulder_art.draw(cell_idx, spin, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Diamond || obj == Obj::PendingDiamond {
+        if (obj == Obj::Diamond || obj == Obj::PendingDiamond) && self.hd.diamond.get() {
             self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             self.diamond_art.draw(frame, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Steel {
+        if obj == Obj::Steel && self.hd.wall.get() {
             self.wall_art.draw_steel(cell_idx, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Brick {
+        if obj == Obj::Brick && self.hd.wall.get() {
             self.wall_art.draw_brick(cell_idx, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Space || obj == Obj::Vacated {
+        if (obj == Obj::Space || obj == Obj::Vacated) && self.hd.backdrop.get() {
             self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
             return;
         }
         if obj == Obj::Rockford {
-            // His cell gets the same HD backdrop as every other cell; the
-            // robot itself is drawn after the cell loop. (The NES Space
-            // metatile used to show through here as stale pixel art.)
-            self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
+            // His cell gets the same backdrop as every other cell; the man
+            // himself (robot or NES body+head) is drawn after the cell loop.
+            // (The NES Space metatile used to show through here as stale
+            // pixel art.)
+            self.draw_backdrop(Obj::Space, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             return;
         }
-        if obj == Obj::Mud {
+        if obj == Obj::Mud && self.hd.mud.get() {
             self.mud_art.draw(self.mud_variant.get(), cell_idx, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Door {
+        if obj == Obj::Door && self.hd.door.get() {
             // HD stargate on the cave backdrop (closed = inactive ring,
             // open = animated event horizon; the NES metatile door is gone).
             self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
@@ -231,7 +320,7 @@ impl Renderer {
     /// (or the given object's quad for non-Space backdrops).
     #[allow(clippy::too_many_arguments)]
     fn draw_backdrop(&self, obj: Obj, cell_idx: usize, cave_idx: usize, bank: usize, x: f32, y: f32, frame: u64, door_open: bool, magic_active: bool) {
-        if obj == Obj::Space || obj == Obj::Vacated {
+        if (obj == Obj::Space || obj == Obj::Vacated) && self.hd.backdrop.get() {
             self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
             return;
         }
@@ -256,11 +345,11 @@ impl Renderer {
         door_open: bool,
         magic_active: bool,
     ) {
-        if obj == Obj::Boulder {
+        if obj == Obj::Boulder && self.hd.boulder.get() {
             self.boulder_art.draw(cell_idx, spin, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Diamond || obj == Obj::PendingDiamond {
+        if (obj == Obj::Diamond || obj == Obj::PendingDiamond) && self.hd.diamond.get() {
             self.diamond_art.draw(frame, x, y, CELL_PX);
             return;
         }
@@ -349,9 +438,10 @@ impl Renderer {
     }
 
     /// Cave field + Rockford (HD robot sprite), clipped to the viewport under
-    /// the HUD. `_suit` was the NES head-overlay color index; the robot keeps
-    /// its own palette. Objects with an active slide in `slides` are drawn at
-    /// their interpolated position.
+    /// the HUD. `suit` is the player's color-table index (sprite palette 0
+    /// color 2, $3D in the ROM) — used by the NES head overlay when the HD
+    /// robot is toggled off. Objects with an active slide in `slides` are
+    /// drawn at their interpolated position.
     #[allow(clippy::too_many_arguments)]
     pub fn draw_world(
         &self,
@@ -362,7 +452,7 @@ impl Renderer {
         magic_active: bool,
         rock: &RockfordAnim,
         slides: &slide::SlideTracker,
-        _suit: usize,
+        suit: usize,
     ) {
         let bank = world_bank(cave_idx);
         let door_open = cave.door_open();
@@ -414,7 +504,7 @@ impl Renderer {
                         sliding.push((obj, idx, slides.spin_for(idx, frame), sx, sy));
                     }
                     None => {
-                        if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) {
+                        if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.diamond.get() {
                             // Backdrop now, gem sprite after the glow pass.
                             self.draw_backdrop(
                                 Obj::Space,
@@ -457,25 +547,27 @@ impl Renderer {
                         }
                     }
                 }
-                let (shade_left, shade_top, shade_diag) = wall_shadow_sides(cave, cx, cy);
-                self.wall_shadow.draw(
-                    shade_left,
-                    shade_top,
-                    shade_diag,
-                    sx_c,
-                    sy_c,
-                    CELL_PX,
-                    shadow_variation(cx, cy),
-                );
+                if self.hd.wall.get() {
+                    let (shade_left, shade_top, shade_diag) = wall_shadow_sides(cave, cx, cy);
+                    self.wall_shadow.draw(
+                        shade_left,
+                        shade_top,
+                        shade_diag,
+                        sx_c,
+                        sy_c,
+                        CELL_PX,
+                        shadow_variation(cx, cy),
+                    );
+                }
                 if slide.is_none() {
                     // Resting-object effects only: while an object slides
                     // INTO this cell the engine already shows it here, and
                     // these would pop in at the destination ahead of the
                     // sliding sprite (its own shadow/glow travels with it).
-                    if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) {
+                    if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.diamond.get() {
                         glows.push((sx_c + CELL_PX / 2.0, sy_c + CELL_PX / 2.0));
                     }
-                    if cell.obj == Obj::Boulder {
+                    if cell.obj == Obj::Boulder && self.hd.boulder.get() {
                         boulder_shadows.push((sx_c, sy_c));
                     }
                 }
@@ -495,40 +587,69 @@ impl Renderer {
             self.diamond_art.draw(frame, dx, dy, CELL_PX);
         }
         for (obj, idx, spin, sx, sy) in sliding {
-            if matches!(obj, Obj::Diamond | Obj::PendingDiamond) {
+            if matches!(obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.diamond.get() {
                 self.diamond_glow.apply_material();
                 self.diamond_glow.draw(frame, sx + CELL_PX / 2.0, sy + CELL_PX / 2.0, CELL_PX);
                 self.diamond_glow.reset_material();
             }
-            if obj == Obj::Boulder {
+            if obj == Obj::Boulder && self.hd.boulder.get() {
                 self.wall_shadow.draw_boulder_shadow(sx, sy, CELL_PX);
             }
             self.draw_cell_sliding(obj, idx, spin, cave_idx, bank, sx, sy, frame, door_open, magic_active);
         }
-        if let Some(rf) = rock.robot_frame(frame) {
-            // The HD robot is drawn AFTER the cell loop at his fractional
-            // slide position. He stands taller than one cell: anchored so
-            // his feet rest on the cell's base line, centered horizontally.
-            // While pushing, the sprite shifts towards the boulder so his
-            // hands actually touch it.
-            let mut s = CELL_PX * robot::DRAW_CELLS;
-            let mut pos = rock.pos;
-            if let Some(center) = rock.suck_center() {
-                // Portal pull-in: drift towards the ring's center while
-                // shrinking into it (scale comes from robot_frame).
-                let k = 1.0 - rf.scale;
-                pos.0 += (center.0 - 0.5 - pos.0) * k;
-                pos.1 += (center.1 - 1.0 - pos.1) * k;
-                s *= rf.scale;
+        if self.hd.rockford.get() {
+            if let Some(rf) = rock.robot_frame(frame) {
+                // The HD robot is drawn AFTER the cell loop at his fractional
+                // slide position. He stands taller than one cell: anchored so
+                // his feet rest on the cell's base line, centered horizontally.
+                // While pushing, the sprite shifts towards the boulder so his
+                // hands actually touch it.
+                let mut s = CELL_PX * robot::DRAW_CELLS;
+                let mut pos = rock.pos;
+                if let Some(center) = rock.suck_center() {
+                    // Portal pull-in: drift towards the ring's center while
+                    // shrinking into it (scale comes from robot_frame).
+                    let k = 1.0 - rf.scale;
+                    pos.0 += (center.0 - 0.5 - pos.0) * k;
+                    pos.1 += (center.1 - 1.0 - pos.1) * k;
+                    s *= rf.scale;
+                }
+                let mut dx = (CELL_PX - s) / 2.0;
+                if rf.row == robot::ROW_PUSH {
+                    dx += if rf.flip { -s * robot::PUSH_REACH } else { s * robot::PUSH_REACH };
+                }
+                let sx = pos.0 * CELL_PX - cam.x + dx;
+                let sy = HUD_H + pos.1 * CELL_PX - cam.y + CELL_PX - s * robot::FEET_FRACTION;
+                self.robot_art
+                    .draw(rf.row, rf.frame, sx, sy, s, rf.flip, rf.rotation, rf.alpha);
             }
-            let mut dx = (CELL_PX - s) / 2.0;
-            if rf.row == robot::ROW_PUSH {
-                dx += if rf.flip { -s * robot::PUSH_REACH } else { s * robot::PUSH_REACH };
+        } else if let Some(head) = rock.head_frame(frame) {
+            // NES Rockford: body metatile + head overlay TOGETHER at the
+            // fractional slide position (the NES had to jump the background
+            // body cell-wise; we don't).
+            let sx = rock.pos.0 * CELL_PX - cam.x;
+            let sy = HUD_H + rock.pos.1 * CELL_PX - cam.y;
+            let scale = CELL_PX / 16.0;
+            if rock.alive() {
+                // Body = background metatile 15 (quad $F44F), world palette 0,
+                // animated via the CHR1 bank swap frames (banks 0-3).
+                let bbank = ((frame / 8) % 4) as usize;
+                draw_texture_ex(
+                    &self.atlas.quad_texture(
+                        ROCKFORD_BODY_QUAD,
+                        bbank,
+                        atlas::world_pal(variant(cave_idx), 0),
+                    ),
+                    sx,
+                    sy,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(16.0 * scale, 16.0 * scale)),
+                        ..Default::default()
+                    },
+                );
             }
-            let sx = pos.0 * CELL_PX - cam.x + dx;
-            let sy = HUD_H + pos.1 * CELL_PX - cam.y + CELL_PX - s * robot::FEET_FRACTION;
-            self.robot_art
-                .draw(rf.row, rf.frame, sx, sy, s, rf.flip, rf.rotation, rf.alpha);
+            self.rockford_art.draw_head(head, suit, sx, sy, scale);
         }
     }
 
@@ -547,6 +668,30 @@ impl Renderer {
             hud::HUD_H + camera::VIEW_H,
             Color::new(1.0, 1.0, 1.0, alpha),
         );
+    }
+
+    /// The F1 graphics menu: one HD/NES toggle row per replaced item.
+    /// Drawn in the cave viewport's 640x416 coordinate space (gameplay
+    /// states only); `sel` is the highlighted row.
+    pub fn draw_gfx_menu(&self, sel: usize) {
+        let rows = self.hd.rows();
+        let line_h = 15.0;
+        let h = (rows.len() + 2) as f32 * line_h;
+        let y0 = HUD_H + (VIEW_H - h) / 2.0;
+        let x0 = (VIEW_W - 260.0) / 2.0;
+        draw_rectangle(x0 - 18.0, y0 - 10.0, 296.0, h + 22.0, Color::new(0.0, 0.0, 0.0, 0.82));
+        hud::draw_text(&self.atlas, x0 + 30.0, y0, "GRAPHICS  F1:CLOSE");
+        for (i, (label, hd)) in rows.iter().enumerate() {
+            let mark = if i == sel { ">" } else { " " };
+            let mode = if *hd { "HD " } else { "NES" };
+            hud::draw_text(
+                &self.atlas,
+                x0,
+                y0 + (i + 1) as f32 * line_h,
+                &format!("{mark} {label:<9} {mode}"),
+            );
+        }
+        hud::draw_text(&self.atlas, x0 + 6.0, y0 + (rows.len() + 1) as f32 * line_h, "ARROWS:MOVE FLIP");
     }
 
     /// Centered overlay text inside the cave viewport (messages, pause).
