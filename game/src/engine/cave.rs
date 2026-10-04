@@ -273,6 +273,13 @@ impl Cave {
         self.rockford_alive
     }
 
+    /// Direction Rockford is currently holding against a boulder (the 24-frame
+    /// push wind-up, $C278), if any. Cosmetic layers use it for the push
+    /// animation; it carries no gameplay effect.
+    pub fn push_state(&self) -> Option<Direction> {
+        self.push_dir
+    }
+
     /// Gameplay frame counter ($FE).
     pub fn frame(&self) -> u64 {
         self.frame
@@ -755,6 +762,7 @@ impl Cave {
                         self.field.cells[b] = Cell::new(Obj::Boulder);
                         self.field.cells[target] = Cell::new(Obj::Vacated);
                         ev.push(Event::Sound(SoundCue::Push));
+                        ev.push(Event::BoulderPushed { dir });
                     }
                 }
                 _ => {}

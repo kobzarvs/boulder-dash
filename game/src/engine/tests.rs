@@ -353,10 +353,14 @@ fn push_never_happens_when_destination_blocked() {
 #[test]
 fn snap_push_with_button_is_instant_and_does_not_move_rockford() {
     let mut cave = ascii_cave(&["ro  ", "++++"], ascii_params());
-    cave.tick(grab(Direction::Right));
+    let ev = cave.tick(grab(Direction::Right));
     assert_eq!(cave.cell_at_idx(ascii_idx(2, 0)).obj, Obj::Boulder);
     assert_eq!(cave.rockford_pos(), ascii_idx(0, 0));
     assert_eq!(cave.cell_at_idx(ascii_idx(1, 0)).obj, Obj::Vacated);
+    assert!(
+        ev.contains(&Event::BoulderPushed { dir: Direction::Right }),
+        "snap push must report BoulderPushed for the render layer"
+    );
 }
 
 #[test]
@@ -636,7 +640,7 @@ fn amoeba_cave6_diag() {
         }
         if evs.contains(&Event::AmoebaConverted { to_diamonds: true }) {
             eprintln!("tick {tick}: CONVERTED, amoeba cells left={}", cave.count_obj(Obj::Amoeba));
-            for i in 0..crate::engine::CELLS {
+            for _i in 0..crate::engine::CELLS {
                 // replay: amoeba already converted; print what surrounded each amoeba cell
             }
             break;

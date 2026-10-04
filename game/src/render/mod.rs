@@ -30,6 +30,7 @@ pub mod glow;
 pub mod hud;
 pub mod mud;
 pub mod nametable;
+pub mod robot;
 pub mod rockford;
 pub mod shadow;
 pub mod slide;
@@ -37,7 +38,6 @@ pub mod wall;
 
 use macroquad::prelude::*;
 
-use crate::data::sprites::ROCKFORD_BODY_QUAD;
 use crate::data::tiles::{METATILE_ATTRS, METATILE_SEQS};
 use crate::engine::{Cave, Obj, HEIGHT, WIDTH};
 
@@ -50,6 +50,7 @@ use glow::DiamondGlow;
 use hud::HUD_H;
 use mud::MudArt;
 use nametable::Screens;
+use robot::RobotArt;
 use rockford::{RockfordAnim, RockfordArt};
 use shadow::WallShadow;
 use wall::WallArt;
@@ -59,6 +60,7 @@ pub struct Renderer {
     /// Pre-rendered decoded screen nametables (title/map/password/...).
     pub screens: Screens,
     rockford_art: RockfordArt,
+    robot_art: RobotArt,
     boulder_art: BoulderArt,
     diamond_art: DiamondArt,
     wall_art: WallArt,
@@ -122,6 +124,7 @@ impl Renderer {
             atlas: Atlas::new(),
             screens: Screens::new(),
             rockford_art: RockfordArt::new(),
+            robot_art: RobotArt::new(),
             boulder_art: BoulderArt::new(),
             diamond_art: DiamondArt::new(),
             wall_art: WallArt::new(),
@@ -195,6 +198,13 @@ impl Renderer {
             return;
         }
         if obj == Obj::Space || obj == Obj::Vacated {
+            self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Rockford {
+            // His cell gets the same HD backdrop as every other cell; the
+            // robot itself is drawn after the cell loop. (The NES Space
+            // metatile used to show through here as stale pixel art.)
             self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
             return;
         }
@@ -327,10 +337,10 @@ impl Renderer {
         }
     }
 
-    /// Cave field + Rockford's head overlay, clipped to the viewport under
-    /// the HUD. `suit` is the player's color-table index (sprite palette 0
-    /// color 2, $3D in the ROM). Objects with an active slide in `slides`
-    /// are drawn at their interpolated position.
+    /// Cave field + Rockford (HD robot sprite), clipped to the viewport under
+    /// the HUD. `_suit` was the NES head-overlay color index; the robot keeps
+    /// its own palette. Objects with an active slide in `slides` are drawn at
+    /// their interpolated position.
     #[allow(clippy::too_many_arguments)]
     pub fn draw_world(
         &self,
@@ -341,7 +351,7 @@ impl Renderer {
         magic_active: bool,
         rock: &RockfordAnim,
         slides: &slide::SlideTracker,
-        suit: usize,
+        _suit: usize,
     ) {
         let bank = world_bank(cave_idx);
         let door_open = cave.door_open();
@@ -468,34 +478,21 @@ impl Renderer {
             }
             self.draw_cell_sliding(obj, idx, spin, cave_idx, bank, sx, sy, frame, door_open, magic_active);
         }
-        if let Some(head) = rock.head_frame(frame) {
-            // Body + head TOGETHER at the fractional slide position (the NES
-            // had to jump the background body cell-wise; we don't).
-            let sx = rock.pos.0 * CELL_PX - cam.x;
-            let sy = HUD_H + rock.pos.1 * CELL_PX - cam.y;
-            let scale = CELL_PX / 16.0;
-            if rock.alive() {
-                // Body = background metatile 15 (quad $F44F), world palette 0,
-                // animated via the CHR1 bank swap frames (banks 0-3).
-                // Transparent background: it slides over other cells.
-                let bbank = ((frame / 8) % 4) as usize;
-                let scale = CELL_PX / 16.0;
-                draw_texture_ex(
-                    &self.atlas.quad_texture(
-                        ROCKFORD_BODY_QUAD,
-                        bbank,
-                        atlas::world_pal(variant(cave_idx), 0),
-                    ),
-                    sx,
-                    sy,
-                    WHITE,
-                    DrawTextureParams {
-                        dest_size: Some(vec2(16.0 * scale, 16.0 * scale)),
-                        ..Default::default()
-                    },
-                );
+        if let Some(rf) = rock.robot_frame(frame) {
+            // The HD robot is drawn AFTER the cell loop at his fractional
+            // slide position. He stands taller than one cell: anchored so
+            // his feet rest on the cell's base line, centered horizontally.
+            // While pushing, the sprite shifts towards the boulder so his
+            // hands actually touch it.
+            let s = CELL_PX * robot::DRAW_CELLS;
+            let mut dx = (CELL_PX - s) / 2.0;
+            if rf.row == robot::ROW_PUSH {
+                dx += if rf.flip { -s * robot::PUSH_REACH } else { s * robot::PUSH_REACH };
             }
-            self.rockford_art.draw_head(head, suit, sx, sy, scale);
+            let sx = rock.pos.0 * CELL_PX - cam.x + dx;
+            let sy = HUD_H + rock.pos.1 * CELL_PX - cam.y + CELL_PX - s * robot::FEET_FRACTION;
+            self.robot_art
+                .draw(rf.row, rf.frame, sx, sy, s, rf.flip, rf.rotation, rf.alpha);
         }
     }
 

@@ -535,6 +535,11 @@ impl Flow {
                 Event::DoorOpened { .. } => self.door_flash = 15,
                 Event::MagicWallActivated => self.magic_active = true,
                 Event::MagicWallExpired => self.magic_active = false,
+                Event::BoulderPushed { dir } => {
+                    if let Some(rock) = &mut self.rock {
+                        rock.pushed(dir);
+                    }
+                }
                 Event::Sound(cue) => {
                     if let Some(a) = audio {
                         a.on_cue(cue, self.tick);

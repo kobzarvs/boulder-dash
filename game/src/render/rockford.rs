@@ -1,31 +1,23 @@
-//! Rockford rendering (Ghidra Q7; data extracted to `data::sprites`).
+//! Rockford rendering.
 //!
-//! The original draws Rockford in two parts:
-//! - **Body**: background metatile 15 ([`ROCKFORD_BODY_QUAD`]), drawn by the
-//!   cave renderer at his cell like any other object, from CHR1 banks 0-3 —
-//!   the per-frame bank swap $6F = ($FE&$18)>>3 supplies the 4 walk frames
-//!   (bank 6 for caves 16-23). Palette: BG group 0 ($F453 attr for $E0 = 0).
-//! - **Head**: a 2-sprite 16x8 OAM overlay from CHR bank 4 (sprite pattern
-//!   table 0, sprite palette 0), sliding smoothly with his pixel position.
-//!   Sprite palette color 2 is the suit color chosen on the color-select
-//!   screen ($3D = $A769[$88]).
+//! Legacy NES art (`RockfordArt`): the 2-sprite 16x8 head overlay sheet with
+//! one row per suit color — still used by the title/map screens.
 //!
-//! This module owns the head overlay: a texture sheet with one tile column
-//! per [`ROCKFORD_HEAD_TILES`] entry and one row per `ROCKFORD_COLORS` suit
-//! color, plus the animation state (cell-to-cell slide, facing, walk cycle,
-//! idle blink, death wobble). The body is drawn by `render::Renderer` in the
-//! cell loop.
+//! Gameplay uses the HD Blender robot instead (`render::robot` atlas):
+//! `RockfordAnim` tracks the cell-to-cell slide, eases a float azimuth
+//! towards the travel direction (0 = facing camera, +90 = right, -90 = left,
+//! 180 = back) and picks atlas rows/frames for idle foot-tapping, run
+//! cycles, boulder pushes, periodic fidgets (head scratch / look around)
+//! and the death arc.
 
 use macroquad::prelude::*;
 
 use crate::data::cave_params::{NES_PALETTE, ROCKFORD_COLORS};
-use crate::data::sprites::{
-    HeadFrame, ROCKFORD_HEAD_DEATH, ROCKFORD_HEAD_IDLE, ROCKFORD_HEAD_TILES, ROCKFORD_HEAD_WALK_DOWN,
-    ROCKFORD_HEAD_WALK_LEFT, ROCKFORD_HEAD_WALK_RIGHT, ROCKFORD_HEAD_WALK_UP,
-};
+use crate::data::sprites::{HeadFrame, ROCKFORD_HEAD_TILES};
 use crate::data::tiles::TILES;
 use crate::engine::{Cave, Direction};
 use crate::engine::WIDTH;
+use crate::render::robot::{self, FRAMES, ROW_DANCE, ROW_IDLE, ROW_LOOK, ROW_PUSH, ROW_RUN, ROW_SCRATCH};
 
 /// CHR bank of the head tiles (sprite pattern table 0 in gameplay).
 const HEAD_BANK: usize = 4;
@@ -107,16 +99,49 @@ impl RockfordArt {
     }
 }
 
-/// Death head wobble lasts this many ticks (the ROM's 80-frame arc, $92=$50),
-/// then the head is gone until respawn.
-const DEATH_HEAD_TICKS: u32 = 80;
-/// Ticks standing still before settling into the front-facing idle blink
-/// (the ROM switches when the walk counter $9C runs out).
-const IDLE_SETTLE_TICKS: u32 = 24;
+/// Death spin+fade length in ticks (the ROM's 80-frame arc, $92=$50).
+const DEATH_ARC_TICKS: u32 = 80;
+/// Idle ticks after the last step before he settles out of the run pose
+/// (keeps the run cycle from flickering at the 8-tick cell boundary).
+const WALK_HOLD_TICKS: u32 = 12;
+/// How long the push pose plays after a grab-button snap push (instant
+/// pushes carry no engine push state, so the event opens a short window).
+const SNAP_PUSH_TICKS: u32 = 16;
+/// Idle ticks before fidgets (head scratch / look around) start firing.
+const FIDGET_START: u32 = 150;
+/// Ticks between fidget plays (deterministic — the engine has no RNG).
+const FIDGET_PERIOD: u32 = 480;
+/// Length of one fidget play in ticks (16 frames at half rate).
+const FIDGET_LEN: u32 = 32;
+
+/// One resolved draw command for the robot atlas.
+pub struct RobotFrame {
+    pub row: usize,
+    pub frame: usize,
+    pub flip: bool,
+    pub rotation: f32,
+    pub alpha: f32,
+}
+
+/// Wrap to (-180, 180] degrees.
+fn wrap180(a: f32) -> f32 {
+    (a + 180.0).rem_euclid(360.0) - 180.0
+}
+
+/// Visual facing for a travel direction: front for down, back for up,
+/// sides for left/right (mirrored rows cover the negative half).
+fn dir_azimuth(d: Direction) -> f32 {
+    match d {
+        Direction::Down => 0.0,
+        Direction::Right => 90.0,
+        Direction::Up => 180.0,
+        Direction::Left => -90.0,
+    }
+}
 
 /// Render-side Rockford animation state: smooth cell-to-cell sliding (the
-/// engine moves him one cell per 8 ticks; the original slides 2 px/frame)
-/// plus facing, walk cycle, idle blink and the death wobble.
+/// engine moves him one cell per 8 ticks; the original slides 2 px/frame),
+/// eased facing, walk/push cycles, idle fidgets and the death arc.
 pub struct RockfordAnim {
     /// Cell position currently drawn (fractional while sliding).
     pub pos: (f32, f32),
@@ -130,6 +155,14 @@ pub struct RockfordAnim {
     idle_ticks: u32,
     /// Ticks since the engine reported him dead (0 = alive).
     dead_ticks: u32,
+    /// Visual facing in degrees, eased towards the travel direction.
+    azimuth: f32,
+    /// Direction of the boulder he is holding against (engine push state).
+    push_dir: Option<Direction>,
+    /// Ticks in the current uninterrupted push.
+    push_ticks: u32,
+    /// Grab-button snap push window: (direction, ticks left).
+    snap_push: Option<(Direction, u32)>,
 }
 
 impl RockfordAnim {
@@ -143,6 +176,10 @@ impl RockfordAnim {
             facing: Direction::Down,
             idle_ticks: 0,
             dead_ticks: 0,
+            azimuth: 0.0,
+            push_dir: None,
+            push_ticks: 0,
+            snap_push: None,
         }
     }
 
@@ -182,10 +219,59 @@ impl RockfordAnim {
         } else {
             self.idle_ticks += 1;
         }
+
+        // Boulder push wind-up reported by the engine (24-frame hold).
+        self.push_dir = cave.push_state();
+        if self.push_dir.is_some() {
+            self.push_ticks += 1;
+        } else {
+            self.push_ticks = 0;
+        }
+        // Snap-push window (grab button): runs out on its own.
+        match self.snap_push {
+            Some((d, left)) if left > 1 => self.snap_push = Some((d, left - 1)),
+            Some(_) => self.snap_push = None,
+            None => {}
+        }
+
+        // Ease the visual facing: towards the push/travel direction while
+        // active, back to the camera at rest. Easing over the nearest
+        // azimuth row reads as a smooth turn.
+        let target = if let Some(d) = self.push_dir {
+            dir_azimuth(d)
+        } else if let Some((d, _)) = self.snap_push {
+            dir_azimuth(d)
+        } else if self.walking() {
+            dir_azimuth(self.facing)
+        } else {
+            0.0
+        };
+        let delta = wrap180(target - self.azimuth);
+        self.azimuth = wrap180(self.azimuth + delta * 0.3);
+        if delta.abs() < 0.5 {
+            self.azimuth = target;
+        }
     }
 
     pub fn moving(&self) -> bool {
         self.step < 8
+    }
+
+    /// Grab-button snap push reported by the engine (`Event::BoulderPushed`):
+    /// turn towards the boulder and play one shove cycle.
+    pub fn pushed(&mut self, dir: Direction) {
+        if self.dead_ticks > 0 {
+            return;
+        }
+        self.snap_push = Some((dir, SNAP_PUSH_TICKS));
+        self.facing = dir;
+    }
+
+    /// Run-cycle state: sliding between cells, or just arrived with the walk
+    /// counter still running (the ROM settles into idle the same way — walk
+    /// frames persist a few ticks after the last step).
+    pub fn walking(&self) -> bool {
+        self.step < 8 || self.idle_ticks < WALK_HOLD_TICKS
     }
 
     /// Alive (not in the death arc and not gone).
@@ -193,28 +279,229 @@ impl RockfordAnim {
         self.dead_ticks == 0
     }
 
-    /// Head metasprite to draw this tick (frame-select formulas match the
-    /// ROM's $FE-based indexes), or `None` once the death arc has played out.
-    pub fn head_frame(&self, tick: u64) -> Option<&'static HeadFrame> {
+    /// Atlas row/frame to draw this tick, or `None` once the death arc has
+    /// played out.
+    pub fn robot_frame(&self, tick: u64) -> Option<RobotFrame> {
         if self.dead_ticks > 0 {
-            if self.dead_ticks <= DEATH_HEAD_TICKS {
-                return Some(&ROCKFORD_HEAD_DEATH[((tick / 16) % 4) as usize]);
+            if self.dead_ticks <= DEATH_ARC_TICKS {
+                // Spin out and fade (the NES wobbled the head; we spin him).
+                return Some(RobotFrame {
+                    row: ROW_IDLE,
+                    frame: 0,
+                    flip: false,
+                    rotation: self.dead_ticks as f32 * 0.22,
+                    alpha: 1.0 - self.dead_ticks as f32 / DEATH_ARC_TICKS as f32,
+                });
             }
             return None;
         }
-        if !self.moving() && self.idle_ticks >= IDLE_SETTLE_TICKS {
-            return Some(&ROCKFORD_HEAD_IDLE[((tick / 32) % 4) as usize]);
+        if let Some(d) = self.push_dir {
+            // Leaning into the boulder; shove pulses on a 32-tick loop.
+            return Some(RobotFrame {
+                row: ROW_PUSH,
+                frame: (self.push_ticks as usize / 2) % FRAMES,
+                flip: d == Direction::Left,
+                rotation: 0.0,
+                alpha: 1.0,
+            });
         }
-        let f = ((tick / 8) % 4) as usize;
-        Some(match self.facing {
-            Direction::Up => &ROCKFORD_HEAD_WALK_UP[f],
-            Direction::Down => &ROCKFORD_HEAD_WALK_DOWN[f],
-            Direction::Left => &ROCKFORD_HEAD_WALK_LEFT[f],
-            Direction::Right => &ROCKFORD_HEAD_WALK_RIGHT[f],
+        if let Some((d, left)) = self.snap_push {
+            // Snap push: one quick shove across the window.
+            let elapsed = (SNAP_PUSH_TICKS - left) as usize;
+            return Some(RobotFrame {
+                row: ROW_PUSH,
+                frame: elapsed % FRAMES,
+                flip: d == Direction::Left,
+                rotation: 0.0,
+                alpha: 1.0,
+            });
+        }
+        if self.walking() {
+            // Two footfalls per crossed cell: the 16-frame cycle runs at
+            // half rate, synced to the 8-tick slide.
+            return Some(RobotFrame {
+                row: ROW_RUN + robot::RobotArt::az_row(self.azimuth),
+                frame: (self.step as usize * 2) % FRAMES,
+                flip: self.azimuth < 0.0,
+                rotation: 0.0,
+                alpha: 1.0,
+            });
+        }
+        if self.idle_ticks >= FIDGET_START {
+            let t = self.idle_ticks - FIDGET_START;
+            if t % FIDGET_PERIOD < FIDGET_LEN {
+                let row = [ROW_SCRATCH, ROW_LOOK, ROW_DANCE][(t / FIDGET_PERIOD) as usize % 3];
+                return Some(RobotFrame {
+                    row,
+                    frame: ((t % FIDGET_PERIOD) as usize / 2) % FRAMES,
+                    flip: false,
+                    rotation: 0.0,
+                    alpha: 1.0,
+                });
+            }
+        }
+        // Standing straight, facing (back to) the camera, tapping a foot on
+        // the beat (one loop = 48 ticks = 0.8 s -> 150 bpm).
+        Some(RobotFrame {
+            row: ROW_IDLE + robot::RobotArt::az_row(self.azimuth),
+            frame: (tick as usize / 3) % FRAMES,
+            flip: self.azimuth < 0.0,
+            rotation: 0.0,
+            alpha: 1.0,
         })
     }
 }
 
 fn cell_xy(i: usize) -> (f32, f32) {
     ((i % WIDTH) as f32, (i / WIDTH) as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::ascii::{ascii_cave, ascii_params};
+    use crate::engine::Input;
+    use crate::render::robot::{ROW_DANCE, ROW_IDLE, ROW_LOOK, ROW_PUSH, ROW_RUN, ROW_SCRATCH};
+
+    fn dir(d: Direction) -> Input {
+        let mut input = Input::NONE;
+        match d {
+            Direction::Up => input.up = true,
+            Direction::Down => input.down = true,
+            Direction::Left => input.left = true,
+            Direction::Right => input.right = true,
+        }
+        input
+    }
+
+    fn frames(cave: &mut Cave, anim: &mut RockfordAnim, n: usize, input: Input) {
+        for _ in 0..n {
+            cave.tick(input);
+            anim.update(cave);
+        }
+    }
+
+    /// Moving right shows the right-facing (unflipped) run rows, left flips
+    /// them, up shows the back row — never the mirrored-opposite side.
+    #[test]
+    fn run_faces_travel_direction() {
+        let mut cave = ascii_cave(&["      r      "], ascii_params());
+        let mut anim = RockfordAnim::new(&cave);
+
+        frames(&mut cave, &mut anim, 20, dir(Direction::Right));
+        let rf = anim.robot_frame(cave.frame()).expect("frame");
+        assert!(rf.row >= ROW_RUN && rf.row < ROW_RUN + 5, "run row expected");
+        assert!(!rf.flip, "moving right must use unflipped rows");
+        assert_eq!(anim.azimuth, 90.0);
+
+        frames(&mut cave, &mut anim, 60, dir(Direction::Left));
+        let rf = anim.robot_frame(cave.frame()).expect("frame");
+        assert!(rf.row >= ROW_RUN && rf.row < ROW_RUN + 5, "run row expected");
+        assert!(rf.flip, "moving left must flip the right-facing rows");
+        assert_eq!(anim.azimuth, -90.0);
+
+        // Vertical travel needs headroom: fresh tall cave.
+        let mut cave = ascii_cave(&[" ", " ", " ", " ", " ", " ", "r"], ascii_params());
+        let mut anim = RockfordAnim::new(&cave);
+        frames(&mut cave, &mut anim, 40, dir(Direction::Up));
+        let rf = anim.robot_frame(cave.frame()).expect("frame");
+        assert_eq!(rf.row, ROW_RUN + 4, "moving up shows the back row");
+    }
+
+    /// When movement stops, the visual facing eases back to the camera and
+    /// the idle rows take over (the user-facing "stand straight" rule).
+    #[test]
+    fn idle_returns_to_face_camera() {
+        let mut cave = ascii_cave(&["   ", " r ", "   "], ascii_params());
+        let mut anim = RockfordAnim::new(&cave);
+        frames(&mut cave, &mut anim, 20, dir(Direction::Right));
+        frames(&mut cave, &mut anim, 40, Input::NONE);
+
+        let rf = anim.robot_frame(cave.frame()).expect("frame");
+        assert_eq!(anim.azimuth, 0.0);
+        assert!(rf.row >= ROW_IDLE && rf.row < ROW_IDLE + 5, "idle row expected");
+        assert_eq!(rf.rotation, 0.0);
+    }
+
+    /// Holding against a boulder plays the braced push loop.
+    #[test]
+    fn push_uses_push_row() {
+        let mut cave = ascii_cave(&["ro  ", "++++"], ascii_params());
+        let mut anim = RockfordAnim::new(&cave);
+        frames(&mut cave, &mut anim, 5, dir(Direction::Right));
+
+        let rf = anim.robot_frame(cave.frame()).expect("frame");
+        assert_eq!(rf.row, ROW_PUSH);
+        assert!(!rf.flip, "pushing right uses the unflipped push row");
+
+        // Mirror side: push left.
+        let mut cave = ascii_cave(&["  or", "++++"], ascii_params());
+        let mut anim = RockfordAnim::new(&cave);
+        frames(&mut cave, &mut anim, 5, dir(Direction::Left));
+        let rf = anim.robot_frame(cave.frame()).expect("frame");
+        assert_eq!(rf.row, ROW_PUSH);
+        assert!(rf.flip, "pushing left flips the push row");
+    }
+
+    /// Grab-button snap push: turns towards the boulder and plays one shove
+    /// even though the engine never enters the 24-frame push state.
+    #[test]
+    fn snap_push_turns_and_shoves() {
+        let mut cave = ascii_cave(&["ro  ", "++++"], ascii_params());
+        let mut anim = RockfordAnim::new(&cave);
+        let mut grab_r = dir(Direction::Right);
+        grab_r.grab = true;
+        frames(&mut cave, &mut anim, 1, grab_r);
+        anim.pushed(Direction::Right);
+        anim.update(&cave);
+
+        let rf = anim.robot_frame(cave.frame()).expect("frame");
+        assert_eq!(rf.row, ROW_PUSH, "snap push must show the push row");
+        assert!(!rf.flip, "snap push right is unflipped");
+        // Facing syncs from the Rockford cell each update, so give the ease a
+        // few ticks before checking the sign.
+        anim.update(&cave);
+        anim.update(&cave);
+        assert!(anim.azimuth > 0.0, "azimuth eases towards the push side, got {}", anim.azimuth);
+
+        // The window ends and he settles back to idle.
+        frames(&mut cave, &mut anim, 24, Input::NONE);
+        let rf = anim.robot_frame(cave.frame()).expect("frame");
+        assert_ne!(rf.row, ROW_PUSH, "push pose must not stick");
+    }
+
+    /// No idle flicker at the 8-tick cell boundary while walking on.
+    #[test]
+    fn run_does_not_flicker_between_cells() {
+        let mut cave = ascii_cave(&[" r      "], ascii_params());
+        let mut anim = RockfordAnim::new(&cave);
+        for i in 0..32 {
+            frames(&mut cave, &mut anim, 1, dir(Direction::Right));
+            let rf = anim.robot_frame(cave.frame()).expect("frame");
+            assert!(
+                rf.row >= ROW_RUN && rf.row < ROW_RUN + 5,
+                "tick {i}: run row expected, got {}",
+                rf.row
+            );
+        }
+    }
+
+    /// Long idling cycles through all three fidgets (scratch, look, dance).
+    #[test]
+    fn idle_fidgets_cycle_all_emotions() {
+        let mut cave = ascii_cave(&["      r      "], ascii_params());
+        let mut anim = RockfordAnim::new(&cave);
+        frames(&mut cave, &mut anim, 20, dir(Direction::Right));
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..1250 {
+            frames(&mut cave, &mut anim, 1, Input::NONE);
+            let rf = anim.robot_frame(cave.frame()).expect("frame");
+            if rf.row >= ROW_SCRATCH {
+                seen.insert(rf.row);
+            }
+        }
+        assert!(seen.contains(&ROW_SCRATCH), "scratch never played");
+        assert!(seen.contains(&ROW_LOOK), "look never played");
+        assert!(seen.contains(&ROW_DANCE), "dance never played");
+    }
 }

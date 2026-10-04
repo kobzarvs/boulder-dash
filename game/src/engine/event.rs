@@ -1,5 +1,7 @@
 //! Per-frame events emitted by the engine for the render/audio layers.
 
+use super::Direction;
+
 /// How Rockford died.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DeathCause {
@@ -54,6 +56,11 @@ pub enum Event {
     /// Rockford entered the open exit door; `time_bonus` points were added
     /// (+1 per remaining time unit).
     CaveComplete { time_bonus: u32 },
+    /// Rockford snap-pushed a boulder with the grab button (instant push, he
+    /// does not move — unlike the 24-frame hold push, which the render layer
+    /// reads from `Cave::push_state`). Purely cosmetic: lets the render
+    /// layer play the push animation towards `dir`.
+    BoulderPushed { dir: Direction },
     /// A falling boulder touched a dormant magic wall; the 4096-frame active
     /// window started.
     MagicWallActivated,
