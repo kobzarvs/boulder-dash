@@ -909,7 +909,9 @@ impl Flow {
 
 /// BDEMPTYCAVE field: open space with a few reference objects, Rockford
 /// mid-cave (field row 10) so the camera can scroll the full vertical range.
-/// The exit door sits two cells right of him (portal/suck-in debugging).
+/// The exit door sits two cells right of him (portal/suck-in debugging);
+/// a firefly, a butterfly, an amoeba and a magic wall dot the area (HD/NES
+/// art debugging).
 fn empty_test_cave() -> [u8; boulder_dash::engine::CELLS] {
     cells_from_ascii(&[
         "                                      ",
@@ -919,9 +921,10 @@ fn empty_test_cave() -> [u8; boulder_dash::engine::CELLS] {
         "     o                           o    ",
         "                                      ",
         "            ++++++                    ",
-        "                                      ",
-        "                                      ",
+        "         a              q             ",
+        "            f                         ",
         "                  r  x                ",
+        "                      ~               ",
         "                                      ",
         "                                      ",
         "                    ++++++            ",
@@ -930,7 +933,6 @@ fn empty_test_cave() -> [u8; boulder_dash::engine::CELLS] {
         "                                      ",
         "                                      ",
         "  *        *                  *       ",
-        "                                      ",
         "                                      ",
     ])
 }

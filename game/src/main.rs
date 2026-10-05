@@ -800,19 +800,19 @@ async fn main() {
             gfx_menu = None; // left the cave with the menu open
         }
         if let Some(sel) = gfx_menu {
+            const ROWS: usize = boulder_dash::render::ITEM_STYLES.len();
             let mut s = sel;
             if is_key_pressed(KeyCode::Down) {
-                s = (s + 1) % 7;
+                s = (s + 1) % ROWS;
             }
             if is_key_pressed(KeyCode::Up) {
-                s = (s + 6) % 7;
+                s = (s + ROWS - 1) % ROWS;
             }
-            if is_key_pressed(KeyCode::Left)
-                || is_key_pressed(KeyCode::Right)
-                || is_key_pressed(KeyCode::X)
-                || is_key_pressed(KeyCode::Enter)
-            {
-                renderer.hd.toggle(s);
+            if is_key_pressed(KeyCode::Right) || is_key_pressed(KeyCode::X) || is_key_pressed(KeyCode::Enter) {
+                renderer.hd.toggle(s, false);
+            }
+            if is_key_pressed(KeyCode::Left) {
+                renderer.hd.toggle(s, true);
             }
             gfx_menu = Some(s);
         }

@@ -27,12 +27,14 @@ pub mod boulder;
 pub mod camera;
 pub mod diamond;
 pub mod door;
+pub mod explosion;
 pub mod glow;
 pub mod hud;
 pub mod mud;
 pub mod nametable;
 pub mod robot;
 pub mod rockford;
+pub mod rowatlas;
 pub mod shadow;
 pub mod slide;
 pub mod wall;
@@ -49,95 +51,88 @@ use boulder::BoulderArt;
 use camera::{Camera, CELL_PX, VIEW_H, VIEW_W};
 use diamond::DiamondArt;
 use door::DoorArt;
+use explosion::ExplosionFx;
 use glow::DiamondGlow;
 use hud::HUD_H;
 use mud::MudArt;
 use nametable::Screens;
 use robot::RobotArt;
 use rockford::{RockfordAnim, RockfordArt};
+use rowatlas::RowAtlas;
 use shadow::WallShadow;
 use wall::WallArt;
 
-/// Per-item art toggles (the F1 menu): true = HD Blender sprite, false =
-/// original NES metatile. Cells so the main loop can flip them through the
-/// shared &Renderer.
+/// Per-item art variants (the F1 menu): index 0 = original NES metatile,
+/// 1.. = HD remaster variants. Cells so the main loop can flip them through
+/// the shared &Renderer.
 pub struct HdToggles {
-    /// Rockford: HD robot vs NES body metatile + head overlay.
-    pub rockford: std::cell::Cell<bool>,
-    /// Boulders: HD spin atlas vs NES metatile (incl. their blob shadows).
-    pub boulder: std::cell::Cell<bool>,
-    /// Diamonds: HD sparkle sprite + glow halo vs NES glint metatile.
-    pub diamond: std::cell::Cell<bool>,
-    /// Exit door: HD stargate + shader horizon vs NES door metatile.
-    pub door: std::cell::Cell<bool>,
-    /// Steel/brick walls: HD masonry + contact shadows vs NES metatiles.
-    pub wall: std::cell::Cell<bool>,
-    /// Dirt: HD panorama vs NES metatile.
-    pub mud: std::cell::Cell<bool>,
-    /// Cave backdrop (space): HD rock texture vs NES space metatile.
-    pub backdrop: std::cell::Cell<bool>,
+    vals: [std::cell::Cell<usize>; ITEM_STYLES.len()],
 }
+
+/// The toggleable items: (menu label, variant names). Index 0 is always the
+/// NES original. New HD items get appended at the end.
+pub const ITEM_STYLES: [(&str, &[&str]); 12] = [
+    ("ROCKFORD", &["NES", "HD"]),
+    ("BOULDERS", &["NES", "HD"]),
+    ("DIAMONDS", &["NES", "HD"]),
+    ("DOOR", &["NES", "HD"]),
+    ("WALLS", &["NES", "HD"]),
+    ("MUD", &["NES", "HD"]),
+    ("BACKDROP", &["NES", "HD"]),
+    ("FIREFLY", &["NES", "BEETLE", "BOT"]),
+    ("BUTTERFLY", &["NES", "MONARCH", "CRYSTAL"]),
+    ("AMOEBA", &["NES", "SLIME", "TOXIC"]),
+    ("MAGICWALL", &["NES", "AMETHYST", "AQUA"]),
+    ("EXPLOSION", &["NES", "EMBERS"]),
+];
+
+// Row indexes for the draw code.
+pub const HD_ROCKFORD: usize = 0;
+pub const HD_BOULDER: usize = 1;
+pub const HD_DIAMOND: usize = 2;
+pub const HD_DOOR: usize = 3;
+pub const HD_WALL: usize = 4;
+pub const HD_MUD: usize = 5;
+pub const HD_BACKDROP: usize = 6;
+pub const HD_FIREFLY: usize = 7;
+pub const HD_BUTTERFLY: usize = 8;
+pub const HD_AMOEBA: usize = 9;
+pub const HD_MAGICWALL: usize = 10;
+pub const HD_EXPLOSION: usize = 11;
 
 impl Default for HdToggles {
     fn default() -> Self {
-        Self {
-            rockford: std::cell::Cell::new(true),
-            boulder: std::cell::Cell::new(true),
-            diamond: std::cell::Cell::new(true),
-            door: std::cell::Cell::new(true),
-            wall: std::cell::Cell::new(true),
-            mud: std::cell::Cell::new(true),
-            backdrop: std::cell::Cell::new(true),
-        }
+        Self { vals: std::array::from_fn(|_| std::cell::Cell::new(1)) }
     }
 }
 
 impl HdToggles {
-    /// Menu rows: (label, hd-on) per item.
-    pub fn rows(&self) -> [(&'static str, bool); 7] {
-        [
-            ("ROCKFORD", self.rockford.get()),
-            ("BOULDERS", self.boulder.get()),
-            ("DIAMONDS", self.diamond.get()),
-            ("DOOR", self.door.get()),
-            ("WALLS", self.wall.get()),
-            ("MUD", self.mud.get()),
-            ("BACKDROP", self.backdrop.get()),
-        ]
+    /// Current variant index of row `idx`.
+    pub fn get(&self, idx: usize) -> usize {
+        self.vals[idx].get()
     }
 
-    /// Flip one menu row.
-    pub fn toggle(&self, row: usize) {
-        let cells = [
-            &self.rockford,
-            &self.boulder,
-            &self.diamond,
-            &self.door,
-            &self.wall,
-            &self.mud,
-            &self.backdrop,
-        ];
-        if let Some(c) = cells.get(row) {
-            c.set(!c.get());
-        }
+    /// Menu rows: (label, variant name) per item.
+    pub fn rows(&self) -> [(&'static str, &'static str); ITEM_STYLES.len()] {
+        std::array::from_fn(|i| {
+            let (label, variants) = ITEM_STYLES[i];
+            (label, variants[self.vals[i].get()])
+        })
     }
 
-    /// Set a toggle by its row label (BDNES env debug helper).
+    /// Cycle one menu row forward/backward.
+    pub fn toggle(&self, row: usize, back: bool) {
+        let n = ITEM_STYLES[row].1.len();
+        let v = self.vals[row].get();
+        self.vals[row].set(if back { (v + n - 1) % n } else { (v + 1) % n });
+    }
+
+    /// Set a row's variant by item label (BDNES env debug helper sets the
+    /// NES variant: `set_by_name(name, false)`; `true` picks the first HD
+    /// variant).
     pub fn set_by_name(&self, name: &str, hd: bool) {
-        let idx = ["ROCKFORD", "BOULDERS", "DIAMONDS", "DOOR", "WALLS", "MUD", "BACKDROP"]
-            .iter()
-            .position(|n| n.eq_ignore_ascii_case(name));
-        if let Some(i) = idx {
-            let cells = [
-                &self.rockford,
-                &self.boulder,
-                &self.diamond,
-                &self.door,
-                &self.wall,
-                &self.mud,
-                &self.backdrop,
-            ];
-            cells[i].set(hd);
+        if let Some(i) = ITEM_STYLES.iter().position(|(n, _)| n.eq_ignore_ascii_case(name)) {
+            self.vals[i].set(if hd { 1 } else { 0 });
         }
     }
 }
@@ -156,6 +151,11 @@ pub struct Renderer {
     diamond_glow: DiamondGlow,
     backdrop_art: BackdropArt,
     mud_art: MudArt,
+    firefly_art: RowAtlas,
+    butterfly_art: RowAtlas,
+    amoeba_art: RowAtlas,
+    magicwall_art: RowAtlas,
+    explosion_fx: ExplosionFx,
     /// Current dirt panorama style (F cycles; Cell so the main loop can
     /// switch it through the shared &Renderer).
     pub mud_variant: std::cell::Cell<usize>,
@@ -223,6 +223,11 @@ impl Renderer {
             diamond_glow: DiamondGlow::new(),
             backdrop_art: BackdropArt::new(),
             mud_art: MudArt::new(),
+            firefly_art: RowAtlas::new(include_bytes!("../../assets/firefly.png")),
+            butterfly_art: RowAtlas::new(include_bytes!("../../assets/butterfly.png")),
+            amoeba_art: RowAtlas::new(include_bytes!("../../assets/amoeba.png")),
+            magicwall_art: RowAtlas::new(include_bytes!("../../assets/magicwall.png")),
+            explosion_fx: ExplosionFx::new(),
             mud_variant: std::cell::Cell::new(0),
             hd: HdToggles::default(),
         }
@@ -271,25 +276,25 @@ impl Renderer {
         door_open: bool,
         magic_active: bool,
     ) {
-        if obj == Obj::Boulder && self.hd.boulder.get() {
+        if obj == Obj::Boulder && self.hd.get(HD_BOULDER) > 0 {
             self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             self.boulder_art.draw(cell_idx, spin, x, y, CELL_PX);
             return;
         }
-        if (obj == Obj::Diamond || obj == Obj::PendingDiamond) && self.hd.diamond.get() {
+        if (obj == Obj::Diamond || obj == Obj::PendingDiamond) && self.hd.get(HD_DIAMOND) > 0 {
             self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             self.diamond_art.draw(frame, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Steel && self.hd.wall.get() {
+        if obj == Obj::Steel && self.hd.get(HD_WALL) > 0 {
             self.wall_art.draw_steel(cell_idx, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Brick && self.hd.wall.get() {
+        if obj == Obj::Brick && self.hd.get(HD_WALL) > 0 {
             self.wall_art.draw_brick(cell_idx, x, y, CELL_PX);
             return;
         }
-        if (obj == Obj::Space || obj == Obj::Vacated) && self.hd.backdrop.get() {
+        if (obj == Obj::Space || obj == Obj::Vacated) && self.hd.get(HD_BACKDROP) > 0 {
             self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
             return;
         }
@@ -301,15 +306,44 @@ impl Renderer {
             self.draw_backdrop(Obj::Space, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             return;
         }
-        if obj == Obj::Mud && self.hd.mud.get() {
+        if obj == Obj::Mud && self.hd.get(HD_MUD) > 0 {
             self.mud_art.draw(self.mud_variant.get(), cell_idx, x, y, CELL_PX);
             return;
         }
-        if obj == Obj::Door && self.hd.door.get() {
+        if obj == Obj::Door && self.hd.get(HD_DOOR) > 0 {
             // HD stargate on the cave backdrop (closed = inactive ring,
             // open = animated event horizon; the NES metatile door is gone).
             self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
             self.door_art.draw(door_open, frame, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Firefly && self.hd.get(HD_FIREFLY) > 0 {
+            self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
+            self.firefly_art.draw(self.hd.get(HD_FIREFLY) - 1, frame, 2, 0, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Butterfly && self.hd.get(HD_BUTTERFLY) > 0 {
+            self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
+            self.butterfly_art
+                .draw(self.hd.get(HD_BUTTERFLY) - 1, frame, 2, 0, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Amoeba && self.hd.get(HD_AMOEBA) > 0 {
+            self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
+            // Per-cell phase: a growing mass never wobbles in lockstep.
+            self.amoeba_art
+                .draw(self.hd.get(HD_AMOEBA) - 1, frame, 4, (cell_idx % 8) as u64, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::MagicWall && self.hd.get(HD_MAGICWALL) > 0 {
+            self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
+            let row = (self.hd.get(HD_MAGICWALL) - 1) * 2 + magic_active as usize;
+            self.magicwall_art.draw(row, frame, 2, 0, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::ExplosionRemnant && self.hd.get(HD_EXPLOSION) > 0 {
+            self.draw_backdrop(backdrop, cell_idx, cave_idx, bank, x, y, frame, door_open, magic_active);
+            self.explosion_fx.draw(cell_idx, frame, x, y, CELL_PX);
             return;
         }
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
@@ -320,7 +354,7 @@ impl Renderer {
     /// (or the given object's quad for non-Space backdrops).
     #[allow(clippy::too_many_arguments)]
     fn draw_backdrop(&self, obj: Obj, cell_idx: usize, cave_idx: usize, bank: usize, x: f32, y: f32, frame: u64, door_open: bool, magic_active: bool) {
-        if (obj == Obj::Space || obj == Obj::Vacated) && self.hd.backdrop.get() {
+        if (obj == Obj::Space || obj == Obj::Vacated) && self.hd.get(HD_BACKDROP) > 0 {
             self.backdrop_art.draw(cell_idx, x, y, CELL_PX);
             return;
         }
@@ -345,12 +379,21 @@ impl Renderer {
         door_open: bool,
         magic_active: bool,
     ) {
-        if obj == Obj::Boulder && self.hd.boulder.get() {
+        if obj == Obj::Boulder && self.hd.get(HD_BOULDER) > 0 {
             self.boulder_art.draw(cell_idx, spin, x, y, CELL_PX);
             return;
         }
-        if (obj == Obj::Diamond || obj == Obj::PendingDiamond) && self.hd.diamond.get() {
+        if (obj == Obj::Diamond || obj == Obj::PendingDiamond) && self.hd.get(HD_DIAMOND) > 0 {
             self.diamond_art.draw(frame, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Firefly && self.hd.get(HD_FIREFLY) > 0 {
+            self.firefly_art.draw(self.hd.get(HD_FIREFLY) - 1, frame, 2, 0, x, y, CELL_PX);
+            return;
+        }
+        if obj == Obj::Butterfly && self.hd.get(HD_BUTTERFLY) > 0 {
+            self.butterfly_art
+                .draw(self.hd.get(HD_BUTTERFLY) - 1, frame, 2, 0, x, y, CELL_PX);
             return;
         }
         let (quad, pal) = self.cell_quad_pal(obj, cave_idx, frame, door_open, magic_active);
@@ -504,7 +547,7 @@ impl Renderer {
                         sliding.push((obj, idx, slides.spin_for(idx, frame), sx, sy));
                     }
                     None => {
-                        if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.diamond.get() {
+                        if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.get(HD_DIAMOND) > 0 {
                             // Backdrop now, gem sprite after the glow pass.
                             self.draw_backdrop(
                                 Obj::Space,
@@ -547,7 +590,7 @@ impl Renderer {
                         }
                     }
                 }
-                if self.hd.wall.get() {
+                if self.hd.get(HD_WALL) > 0 {
                     let (shade_left, shade_top, shade_diag) = wall_shadow_sides(cave, cx, cy);
                     self.wall_shadow.draw(
                         shade_left,
@@ -564,10 +607,10 @@ impl Renderer {
                     // INTO this cell the engine already shows it here, and
                     // these would pop in at the destination ahead of the
                     // sliding sprite (its own shadow/glow travels with it).
-                    if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.diamond.get() {
+                    if matches!(cell.obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.get(HD_DIAMOND) > 0 {
                         glows.push((sx_c + CELL_PX / 2.0, sy_c + CELL_PX / 2.0));
                     }
-                    if cell.obj == Obj::Boulder && self.hd.boulder.get() {
+                    if cell.obj == Obj::Boulder && self.hd.get(HD_BOULDER) > 0 {
                         boulder_shadows.push((sx_c, sy_c));
                     }
                 }
@@ -587,17 +630,17 @@ impl Renderer {
             self.diamond_art.draw(frame, dx, dy, CELL_PX);
         }
         for (obj, idx, spin, sx, sy) in sliding {
-            if matches!(obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.diamond.get() {
+            if matches!(obj, Obj::Diamond | Obj::PendingDiamond) && self.hd.get(HD_DIAMOND) > 0 {
                 self.diamond_glow.apply_material();
                 self.diamond_glow.draw(frame, sx + CELL_PX / 2.0, sy + CELL_PX / 2.0, CELL_PX);
                 self.diamond_glow.reset_material();
             }
-            if obj == Obj::Boulder && self.hd.boulder.get() {
+            if obj == Obj::Boulder && self.hd.get(HD_BOULDER) > 0 {
                 self.wall_shadow.draw_boulder_shadow(sx, sy, CELL_PX);
             }
             self.draw_cell_sliding(obj, idx, spin, cave_idx, bank, sx, sy, frame, door_open, magic_active);
         }
-        if self.hd.rockford.get() {
+        if self.hd.get(HD_ROCKFORD) > 0 {
             if let Some(rf) = rock.robot_frame(frame) {
                 // The HD robot is drawn AFTER the cell loop at his fractional
                 // slide position. He stands taller than one cell: anchored so
@@ -670,25 +713,24 @@ impl Renderer {
         );
     }
 
-    /// The F1 graphics menu: one HD/NES toggle row per replaced item.
-    /// Drawn in the cave viewport's 640x416 coordinate space (gameplay
-    /// states only); `sel` is the highlighted row.
+    /// The F1 graphics menu: one row per replaced item, cycling NES and the
+    /// HD variants. Drawn in the cave viewport's 640x416 coordinate space
+    /// (gameplay states only); `sel` is the highlighted row.
     pub fn draw_gfx_menu(&self, sel: usize) {
         let rows = self.hd.rows();
-        let line_h = 15.0;
+        let line_h = 14.0;
         let h = (rows.len() + 2) as f32 * line_h;
         let y0 = HUD_H + (VIEW_H - h) / 2.0;
-        let x0 = (VIEW_W - 260.0) / 2.0;
-        draw_rectangle(x0 - 18.0, y0 - 10.0, 296.0, h + 22.0, Color::new(0.0, 0.0, 0.0, 0.82));
-        hud::draw_text(&self.atlas, x0 + 30.0, y0, "GRAPHICS  F1:CLOSE");
-        for (i, (label, hd)) in rows.iter().enumerate() {
+        let x0 = (VIEW_W - 300.0) / 2.0;
+        draw_rectangle(x0 - 18.0, y0 - 10.0, 336.0, h + 22.0, Color::new(0.0, 0.0, 0.0, 0.82));
+        hud::draw_text(&self.atlas, x0 + 42.0, y0, "GRAPHICS  F1:CLOSE");
+        for (i, (label, variant)) in rows.iter().enumerate() {
             let mark = if i == sel { ">" } else { " " };
-            let mode = if *hd { "HD " } else { "NES" };
             hud::draw_text(
                 &self.atlas,
                 x0,
                 y0 + (i + 1) as f32 * line_h,
-                &format!("{mark} {label:<9} {mode}"),
+                &format!("{mark} {label:<10} {variant}"),
             );
         }
         hud::draw_text(&self.atlas, x0 + 6.0, y0 + (rows.len() + 1) as f32 * line_h, "ARROWS:MOVE FLIP");
